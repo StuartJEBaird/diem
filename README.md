@@ -1,4 +1,4 @@
-# diem: Diagnostic index expectation maximisation
+# *diem*: Diagnostic index expectation maximisation
 
 <img
   src="/diemimages/CircleDiagram24MayBitMap.jpg"
