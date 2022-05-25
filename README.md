@@ -6,7 +6,7 @@
   title=""
   style="display: inline-block; margin: 0 auto; max-width: 300px">
   
-*diem* is a deterministic, likelihood-based genome polarisation algorithm that finds which alleles of genomic markers belong to which side of a barrier, co-estimates which individuals belong on either side of a barrier and the barrier strength. *diem* is an expectation maximisation algorithm and so uses the likelihood inference framework.
+*diem* is a genome polarisation algorithm that finds which alleles of genomic markers belong to which side of a barrier, co-estimates which individuals belong on either side of a barrier and the barrier strength. *diem* is a deterministic expectation maximisation algorithm and so uses the likelihood inference framework.
 
 The *diem* algorithm has implemented in several programming languages, with core functions and accompanying tools stored in this repository. 
 
