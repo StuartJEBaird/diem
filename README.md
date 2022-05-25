@@ -1,7 +1,7 @@
 # diem: Diagnostic index expectation maximisation
 
 <img
-  src="/diemimages/CircleDiagram24MayBitMap.PDF"
+  src="/diemimages/CircleDiagram24MayBitMap.jpg"
   alt="Alt text"
   title=""
   style="display: inline-block; margin: 0 auto; max-width: 300px">
