@@ -1,12 +1,12 @@
 # diem: Diagnostic index expectation maximisation
 
-The *diem* is a deterministic, likelihood-based genome polarisation algorithm that finds which alleles of genomic markers belong to which side of the barrier. Co-estimates which individuals belong to either side of the barrier and barrier strength. Uses expectation maximisation in likelihood framework.
+*diem* is a deterministic, likelihood-based genome polarisation algorithm that finds which alleles of genomic markers belong to which side of a barrier, co-estimates which individuals belong on either side of a barrier and the barrier strength. *diem* is an expectation maximisation algorithm and so uses the likelihood inference framework.
 
-The *diem* algorithm was implemented in different programming languages, with core functions and accompanying tools stored in this repository. 
+The *diem* algorithm has implemented in several programming languages, with core functions and accompanying tools stored in this repository. 
 
 1. **diemr** - `R` implementation. The package is available through https://CRAN.R-project.org/package=diemr.
 2. **diempy** - `Python` implementation.
-3. **diemmca** - `Mathematica` implementation.
+3. **diemmca** - `Mathematica` implementation. Soon also to be available at https://www.notebookarchive.org
 
 When using any of the *diem* algorithm implementations, cite:
 
