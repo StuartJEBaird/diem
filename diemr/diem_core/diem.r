@@ -84,7 +84,7 @@
 
 
 diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
-                 epsilon = 0.99, verbose = FALSE, nCores = parallel::detectCores() - 1,
+                 epsilon = 0.99999, verbose = FALSE, nCores = parallel::detectCores() - 1,
                  maxIterations = 50, ...) {
   if (is.na(nCores)) nCores <- 1
   if (nCores > parallel::detectCores()) nCores <- parallel::detectCores()
@@ -97,7 +97,9 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
     folder <- verbose
     verbose <- TRUE
     lfolder <- paste0(folder, "/likelihood")
+    
     if (!dir.exists(lfolder)) dir.create(lfolder)
+    
     logfile <- paste0(folder, "/log.txt")
   } else {
     folder <- getwd()
@@ -368,7 +370,13 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
   SmallDataCorrection <- function() {
     minI4 <- min(I4)
-    return(max(c(0, SmallDataErrorTermGoesTo - minI4)))
+    # return(max(c(0, SmallDataErrorTermGoesTo - minI4)))
+    res <- ifelse(test = minI4 > SmallDataErrorTermGoesTo, 
+      yes = -1,
+      no = ifelse(minI4 == SmallDataErrorTermGoesTo,
+        yes = 0,
+        no = 1))
+    return(res)
   }
 
 
@@ -500,7 +508,7 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   # DI for state counts
   FlatLogI4 <- apply(V4,
     MARGIN = 1,
-    FUN = function(x) x / sum(x)
+    FUN = function(x) x / (sum(x) - 3 * SmallDataI4errorTerm)
   )
   FlatLogI4 <- log(c(FlatLogI4))
 
