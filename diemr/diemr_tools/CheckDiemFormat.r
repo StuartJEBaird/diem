@@ -1,4 +1,4 @@
-#' Diadem input file checker
+#' diem input file checker
 #'
 #' Checks format of files with genotype data.
 #'

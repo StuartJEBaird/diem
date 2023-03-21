@@ -17,3 +17,5 @@ The *diem* algorithm has been implemented in several programming languages, with
 When using any of the *diem* algorithm implementations, cite:
 
 > Stuart J. E. Baird, Jan Petružela, Izar Jaroň, Pavel Škrabánek, Natália Martínková. 2022. Genome polarisation for detecting barriers to geneflow. bioRxiv 2022.03.24.485605; doi: https://doi.org/10.1101/2022.03.24.485605.
+
+> Stuart J. E. Baird, Jan Petružela, Izar Jaroň, Pavel Škrabánek, Natália Martínková. 2022. Genome polarisation for detecting barriers to geneflow. Methods in Ecology and Evolution; doi: https://doi.org/10.1111/2041-210X.14010.
