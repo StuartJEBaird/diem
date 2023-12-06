@@ -44,13 +44,17 @@ plotPolarized <- function(genotypes, HI, cols = c("#FFFFFF", "#800080", "#FFE500
   	cols = c("#FFFFFF", "#800080", "#FFE500", "#008080")
   }
   
+  # matrix for plotting
+  dat <- t(matrix(as.numeric(factor(genotypes[order(HI), ], 
+                                   levels = c("_", "0", "1", "2"))), 
+                  ncol = nMarkers))
+  
+  #plotting
   image(
     x = 1:nMarkers,
     y = 1:nInds,
-    z = t(matrix(as.numeric(factor(genotypes[order(HI), ], 
-                                   levels = c("_", "0", "1", "2"))), 
-                 ncol = nMarkers)),
-    col = cols,
+    z = dat,
+    col = cols[sort(unique(c(dat)))],
     xlab = "Markers", ylab = "Individuals", axes = FALSE, useRaster = TRUE
   )
 }
