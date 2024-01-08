@@ -8,6 +8,8 @@
 #' @param filename character vector with a path where to save the converted genotypes.
 #' @param chunk numeric indicating by how many markers should the result be split into
 #'     separate files. \code{chunk = 1} saves all markers into one file.
+#' @param requireHomozygous logical whether to require the marker to have at least one
+#'     homozygous individual for each allele.
 #' @param ... additional arguments.
 #'
 #' @details Importing vcf files larger than 1GB is not recommended. The path to the
@@ -48,7 +50,7 @@
 #'   vcf2diem(SNP = myovcf, filename = "test3")
 #'   vcf2diem(SNP = myovcf, filename = "test4", chunk = 3)
 #' }
-vcf2diem <- function(SNP, filename, chunk = 1L, ...) {
+vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
   if (!inherits(SNP, c("character", "vcfR"), which = FALSE)) {
     stop("'SNP' must be either a 'vcfR' object or a 'character' string with path to a vcf file.")
   }
@@ -155,7 +157,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, ...) {
     
 	# identify non-informative markers
 	I4 <- t(apply(SNP, MARGIN = 1, FUN = sStateCount))
-	nonInformative <- (I4[, 2] == 0 & I4[, 4] == 0) | # only heterozygots
+	nonInformative <- switch(requireHomozygous + 1, (I4[, 2] == 0 & I4[, 4] == 0), (I4[, 2] == 0 | I4[, 4] == 0))  | # only heterozygots, | requiring one homozygous ind for each allele 
 					  (I4[, 3] == 1 & I4[, 2] == 0) | (I4[, 3] == 1 & I4[, 4] == 0) | # only one heterozygous individual
 					  (I4[, 4] == 0 & I4[, 3] == 0) | # only homozygots for the reference allele
 					  (I4[, 2] == 0 & I4[, 3] == 0) # only homozygots for the alternative allele
