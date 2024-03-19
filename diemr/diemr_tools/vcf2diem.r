@@ -34,10 +34,14 @@
 #'      When the vcf file contains markers non-informative for genome polarisation, those 
 #'      those are removed and listed in a file *omittedLoci.txt* in the working directory. 
 #'      The omitted loci are identified by their information in the CHROM and POS columns.
+#'      The CHROM and POS information for loci included in the converted file are in 
+#'      *includedLoci.txt*.
 #' @return No value returned, called for side effects.
 #' @importFrom vcfR getFIX extract.gt
 #' @importFrom tools file_ext file_path_sans_ext
 #' @export
+#' @author Natalia Martinkova
+#' @author Filip Jagos <521160@mail.muni.cz>
 #' @examples
 #' \dontrun{
 #' # vcf2diem will write files to a working directory or a specified folder
@@ -73,8 +77,6 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
     chunk <- chunk[1]
     warning("Different chunk sizes are not permitted. Using chunk size of ", chunk, " for all files.")
   }
-  # initialize omittedLoci.txt
-  cat("CHROM\tPOS\n", file = "omittedLoci.txt", append = FALSE)
 
 
 
@@ -90,30 +92,37 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
   ################################################
 
   ResolveOutput <- function(SNP, filename, chunk) {
-    if (length(filename) == 1 & chunk < 100) {
-      fileext <- tools::file_ext(filename)
-      filepath <- tools::file_path_sans_ext(filename)
-      filename <- paste0(
-        filepath,
-        "-",
+    # use only the first filename
+    if (length(filename) > 1){
+      filename <- filename[1]
+    }
+    # strip file extension and replace with a file number and txt
+    fileext <- tools::file_ext(filename)
+    filepath <- tools::file_path_sans_ext(filename)
+    filename <- filepath
+	# file names for loci positions
+    lociFiles <- c(paste0(filepath, "-omittedLoci.txt"),
+				   paste0(filepath, "-includedLoci.txt"))
+	# estimate chunk size			        
+    if (chunk < 100) {
+      if (any(class(SNP) == "vcfR")) {
+        filename <- paste0(filename, "-",
         formatC(1:chunk, width = nchar(chunk), flag = 0),
         ".",
         ifelse(fileext == "", "txt", fileext)
-      )
-      if (any(class(SNP) == "vcfR")) {
+        )
         chunk <- unname(ceiling(nrow(SNP@fix) / chunk))
       } else {
         filesize <- file.size(SNP)[1]
         # model prediction on possible number of markers per chunk
         chunk <- ceiling(10^(-1.2387 + 0.7207 * log10(filesize)) / chunk)
-        filename <- filepath
         message("Expecting to include ", chunk, " markers per diem file.\nIf you expect more markers in the file, provide suitable chunk size.")
       }
     }
-    if (length(filename) > 1 & chunk >= 100) {
+    if (chunk >= 100) {
       message("Expecting to include ", chunk, " markers per diem file.")
     }
-    return(list(filename, chunk))
+    return(list(filename, chunk, lociFiles))
   }
 
 
@@ -164,7 +173,14 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
 	
 	if(any(nonInformative)){
 	  cat(paste(INFO[nonInformative, 1:2], collapse = "\t"),
-	    file = "omittedLoci.txt", 
+	    file = omittedLoci, 
+	    sep = "\n", 
+		append = TRUE
+	  )
+
+	} else {
+	  cat(paste(INFO[!nonInformative, 1:2], collapse = "\t"),
+	    file = includedLoci, 
 	    sep = "\n", 
 		append = TRUE
 	  )
@@ -186,6 +202,12 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
 
   filename <- outputs[[1]]
   chunk <- outputs[[2]]
+  omittedLoci <- outputs[[3]][1]
+  includedLoci <- outputs[[3]][2]
+
+  # initialize loci placement files
+  cat("CHROM\tPOS\n", file = omittedLoci, append = FALSE)
+  cat("CHROM\tPOS\n", file = includedLoci, append = FALSE)
 
 
 
@@ -267,7 +289,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
       nLines <- nLines + 1
       if (chunk != 1 && nLines > chunk) {
         close(outfile)
-        outfile <- file(paste0(filename, "-", formatC(nFiles, width = 2, flag = 0), ".txt"),
+        outfile <- file(paste0(filename, "-", formatC(nFiles, width = 3, flag = 0), ".txt"),
           open = "wt"
         )
         message("Done with chunk ", nFiles - 1)
