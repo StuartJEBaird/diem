@@ -12,9 +12,10 @@
 #'     homozygous individual for each allele.
 #' @param ... additional arguments.
 #'
-#' @details Importing vcf files larger than 1GB is not recommended. The path to the
+#' @details Importing vcf files larger than 1GB, and those containing multiallelic 
+#'      genotypes is not recommended. The path to the
 #'      vcf file in \code{SNP} reads the file line by line, and might be a solution for
-#'      very large genomic datasets.
+#'      very large and complex genomic datasets. 
 #'
 #'      The number of files \code{vcf2diem} creates depends on the \code{chunk} argument
 #'      and class of the \code{SNP} object. 
@@ -42,6 +43,7 @@
 #' @export
 #' @author Natalia Martinkova
 #' @author Filip Jagos <521160@mail.muni.cz>
+#' @author Jachym Postulka <506194@muni.cz>
 #' @examples
 #' \dontrun{
 #' # vcf2diem will write files to a working directory or a specified folder
@@ -131,29 +133,31 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
   ###############################################
 
   ResolveGenotypes <- function() {
-    # attempt to resolve sites with indels in ALT
+    # attempt to resolve sites with indels in REF and ALT
+    INFO[, 4] <- sub("\\*", "AA", INFO[, 4])
     INFO[, 5] <- sub("\\*", "AA", INFO[, 5])
-    resolvable <- lapply(strsplit(INFO[, 5], ",", fixed = TRUE),
-      FUN = \(x) which(nchar(x) == 1)
+    ALLELES <- apply(INFO[, 4:5, drop = FALSE], 1, FUN = \(x) paste(x[1], x[2], sep = ","))
+    resolvable <- lapply(strsplit(ALLELES, ",", fixed = TRUE),
+      FUN = \(x) which(nchar(x) == 1) - 1 # allele numbers, not indices
     )
-    resolvable[lengths(resolvable) == 0] <- NA
+    resolvable[lengths(resolvable) <= 1] <- NA
 
     # remove markers with unresolvable indels
-    SNP[nchar(INFO[, 4]) > 1, ] <- NA # REF alleles contain insertion
+    # SNP[nchar(INFO[, 4]) > 1, ] <- NA # REF alleles contain insertion / now included in resolvable
     SNP[indels <- sapply(resolvable, FUN = anyNA, simplify = TRUE), ] <- NA # ALT alleles do not contain substitutions
 
     # resolve multiallelic markers
-    multiallelic <- which(grepl(",", INFO[, 5]) & !indels)
+    multiallelic <- which(grepl(",", ALLELES) & !indels)
     for (i in multiallelic) {
-      majorAllele <- resolvable[[i]][which.max(sapply(resolvable[[i]],
-        FUN = \(allele) sum(unlist(gregexpr(allele, SNP[i, ])) > 0, na.rm = TRUE)
-      ))]
+      alleleCounts <- table(unlist(strsplit(SNP, "/|\\|")))[as.character(resolvable[[i]])]
+      majorAlleles <- names(sort(alleleCounts, decreasing = TRUE)[1:2])
       SNP[i, ] <- sub(
-        pattern = paste0("[", paste(c(1:9)[-majorAllele], collapse = ""), "]"),
+        pattern = paste0("[", paste(c(0:9)[-(1 + as.numeric(majorAlleles))], collapse = ""), "]"),
         replacement = "\\.",
         x = SNP[i, ]
       )
-      SNP[i, ] <- gsub(majorAllele, "1", SNP[i, ])
+      SNP[i, ] <- gsub(majorAlleles[1], "0", SNP[i, ])
+      SNP[i, ] <- gsub(majorAlleles[2], "1", SNP[i, ])
     }
 
     # genotypes from the most frequent substitutions
