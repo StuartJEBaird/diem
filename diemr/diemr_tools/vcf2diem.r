@@ -13,37 +13,38 @@
 #' @param ... additional arguments.
 #'
 #' @details Importing vcf files larger than 1GB, and those containing multiallelic
-#'      genotypes is not recommended. The path to the
-#'      vcf file in \code{SNP} reads the file line by line, and might be a solution for
-#'      very large and complex genomic datasets.
+#'    genotypes is not recommended. Instead, the path to the
+#'    vcf file in \code{SNP} reads the file line by line, and might be a solution for
+#'    very large and complex genomic datasets.
 #'
-#'      The number of files \code{vcf2diem} creates depends on the \code{chunk} argument
-#'      and class of the \code{SNP} object.
+#'    The number of files \code{vcf2diem} creates depends on the \code{chunk} argument
+#'    and class of the \code{SNP} object.
 #'
-#'       * When \code{chunk = 1}, one output file will be created.
-#'       * Values of \code{chunk < 100} are interpreted as the number of files into which to
-#'      split data in \code{SNP}. For \code{SNP} object of class \code{vcfR}, the number
-#'      of markers per file is calculated from the dimensions of \code{SNP}. When class
-#'      of \code{SNP} is \code{character}, the number of markers per file is approximated
-#'      from a model with a message. If this number is inappropriate for the expected
-#'      output, provide the intended number of markers per file in \code{chunk} greater
-#'      than 100. \code{vcf2diem} will scan the whole input \code{SNP} file, creating
-#'      additional output files until the last line in \code{SNP} is reached.
-#'       * Values of \code{chunk >= 100} mean that each output file
-#'      in diem format will contain \code{chunk} number of lines with the data in \code{SNP}.
+#'    * When \code{chunk = 1}, one output file will be created.
+#'    * Values of \code{chunk < 100} are interpreted as the number of files into which to
+#'    split data in \code{SNP}. For \code{SNP} object of class \code{vcfR}, the number
+#'    of markers per file is calculated from the dimensions of \code{SNP}. When class
+#'    of \code{SNP} is \code{character}, the number of markers per file is approximated
+#'    from a model with a message. If this number of markers per file is inappropriate
+#'    for the expected
+#'    output, provide the intended number of markers per file in \code{chunk} greater
+#'    than 100. \code{vcf2diem} will scan the whole input in the \code{SNP} file, creating
+#'    additional output files until the last line in \code{SNP} is reached.
+#'    * Values of \code{chunk >= 100} mean that each output file
+#'    in diem format will contain \code{chunk} number of lines with the data in \code{SNP}.
 #'
-#'      When the vcf file contains markers non-informative for genome polarisation, those
-#'      those are removed and listed in a file *omittedLoci.txt* in the working directory.
-#'      The omitted loci are identified by their information in the CHROM and POS columns.
-#'      The CHROM and POS information for loci included in the converted file are in
-#'      *includedLoci.txt*.
+#'    When the vcf file contains markers non-informative for genome polarisation, those
+#'    those are removed and listed in a file *omittedLoci.txt* in the working directory.
+#'    The omitted loci are identified by their information in the CHROM and POS columns.
+#'    The CHROM and POS information for loci included in the converted files are in
+#'    *includedLoci.txt*.
 #' @return No value returned, called for side effects.
 #' @importFrom vcfR getFIX extract.gt
 #' @importFrom tools file_ext file_path_sans_ext
 #' @export
 #' @author Natalia Martinkova
 #' @author Filip Jagos <521160@mail.muni.cz>
-#' @author Jachym Postulka <506194@muni.cz>
+#' @author Jachym Postulka <506194@mail.muni.cz>
 #' @examples
 #' \dontrun{
 #' # vcf2diem will write files to a working directory or a specified folder
@@ -113,7 +114,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
       if (any(class(SNP) == "vcfR")) {
         filename <- paste0(
           filename, "-",
-          formatC(1:chunk, width = max(3, nchar(origChunk)), flag = 0),
+          formatC(1:chunk, width = 3, flag = 0),
           ".",
           ifelse(fileext == "", "txt", fileext)
         )
@@ -122,7 +123,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
         filesize <- file.size(SNP)[1]
         # model prediction on possible number of markers per chunk
         chunk <- ceiling(10^(-1.2387 + 0.7207 * log10(filesize)) / chunk)
-        message("Expecting to include ", chunk, " markers per diem file.\nIf you expect more markers in the file, provide suitable chunk size.")
+        message("Expecting to include ", chunk, " markers per diem file.\nIf you expect more markers in the file, provide a suitable chunk size.")
       }
     }
     if (chunk >= 100) {
@@ -142,28 +143,34 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
     INFO[, 5] <- sub("\\*|\\.", "AA", INFO[, 5])
     ALLELES <- apply(INFO[, 4:5, drop = FALSE], 1, FUN = \(x) paste(x[1], x[2], sep = ","))
     resolvable <- lapply(strsplit(ALLELES, ",", fixed = TRUE),
-      FUN = \(x) which(nchar(x) == 1) - 1 # allele numbers, not indices
+      FUN = \(x) which(nchar(x) == 1) - 1 # allele numbers, not indices; removes allele numbers for indels
     )
-    resolvable[lengths(resolvable) <= 1] <- NA
+    resolvable[lengths(resolvable) <= 1] <- NA # sets markers as not resolvable if less than 2 substitutions remain
+    reason <- 1
 
     # remove markers with unresolvable indels
-    # SNP[nchar(INFO[, 4]) > 1, ] <- NA # REF alleles contain insertion / now included in resolvable
-    SNP[indels <- sapply(resolvable, FUN = anyNA, simplify = TRUE), ] <- NA # ALT alleles do not contain substitutions
+    SNP[indels <- sapply(resolvable, FUN = anyNA, simplify = TRUE), ] <- NA
 
     # resolve multiallelic markers
     multiallelic <- which(grepl(",", ALLELES) & !indels)
     if (length(multiallelic) > 0) {
       for (i in multiallelic) {
         alleleCounts <- table(unlist(strsplit(SNP, "/|\\|")))
-        if(!all(as.character(resolvable[[i]]) %in% names(alleleCounts))){ next }
+        # check that the site is not invariant
+        if (sum(as.character(resolvable[[i]]) %in% names(alleleCounts)) < 2) {
+          next
+        }
+        # select allele numbers with the highest allele counts
         majorAlleles <- names(sort(alleleCounts[names(alleleCounts) %in% as.character(0:9)], decreasing = TRUE)[1:2])
-        SNP[i, ] <- sub(
+        SNP[i, ] <- gsub(
           pattern = paste0("[", paste(c(0:9)[-(1 + as.numeric(majorAlleles))], collapse = ""), "]"),
           replacement = "\\.",
           x = SNP[i, ]
         )
-        SNP[i, ] <- gsub(majorAlleles[1], "0", SNP[i, ])
-        SNP[i, ] <- gsub(majorAlleles[2], "1", SNP[i, ])
+        SNP[i, ] <- gsub(majorAlleles[1], "A", SNP[i, ])
+        SNP[i, ] <- gsub(majorAlleles[2], "B", SNP[i, ])
+        SNP[i, ] <- gsub("A", "0", SNP[i, ])
+        SNP[i, ] <- gsub("B", "1", SNP[i, ])
       }
     }
 
@@ -177,22 +184,36 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
 
     # identify non-informative markers
     I4 <- t(apply(SNP, MARGIN = 1, FUN = sStateCount))
-    nonInformative <- switch(requireHomozygous + 1,
-      (I4[, 2] == 0 & I4[, 4] == 0),
-      (I4[, 2] == 0 | I4[, 4] == 0)
-    ) | # only heterozygots, | requiring one homozygous ind for each allele
-      (I4[, 3] == 1 & I4[, 2] == 0) | (I4[, 3] == 1 & I4[, 4] == 0) | # only one heterozygous individual
-      (I4[, 4] == 0 & I4[, 3] == 0) | # only homozygots for the reference allele
-      (I4[, 2] == 0 & I4[, 3] == 0) # only homozygots for the alternative allele
+    nonInformative <- FALSE
+    if (requireHomozygous && (I4[, 2] == 0 && I4[, 4] == 0)) { # homozygous individuals missing
+      nonInformative <- TRUE
+      reason <- 2
+    } else if ((I4[, 3] == 1 && (I4[, 2] == 0 || I4[, 4] == 0))) { # only one heterozygous individual
+      nonInformative <- TRUE
+      reason <- 3
+    } else if (I4[, 4] == 0 && I4[, 3] == 0) { # invariant for the most frequent allele
+      nonInformative <- TRUE
+      reason <- 4
+    } else if (I4[, 2] == 0 && I4[, 3] == 0) { # invariant for the second most frequent allele (should never happen, bug check for majorAlleles)
+      nonInformative <- TRUE
+      reason <- 5
+    }
 
     if (any(nonInformative)) {
-      cat(paste(INFO[nonInformative, 1:2], collapse = "\t"),
+      cat(paste(c(INFO[nonInformative, c(1:2, 6)], reason), collapse = "\t"),
         file = omittedLoci,
         sep = "\n",
         append = TRUE
       )
     } else {
-      cat(paste(INFO[!nonInformative, 1:2], collapse = "\t"),
+      cat(
+        paste(
+          c(
+            INFO[!nonInformative, c(1:2, 6)],
+            strsplit(ALLELES, ",", fixed = TRUE)[[1]][as.numeric(majorAlleles) + 1]
+          ),
+          collapse = "\t"
+        ),
         file = includedLoci,
         sep = "\n",
         append = TRUE
@@ -207,7 +228,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
 
   #############################
   #############################
-  ####  Convert genotypes  ####
+  ####   Resolve outputs   ####
   #############################
   #############################
 
@@ -220,8 +241,8 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
   includedLoci <- outputs[[4]][2]
 
   # initialize loci placement files
-  cat("CHROM\tPOS\n", file = omittedLoci, append = FALSE)
-  cat("CHROM\tPOS\n", file = includedLoci, append = FALSE)
+  cat("## Reasons for omitting loci:\n## 1 - Marker has fewer than 2 alleles representing substitutions\n## 2 - Required homozygous individuals for the 2 most frequent alleles are not present\n## 3 - The second most frequent allele is found only in one heterozygous individual\n## 4 - Dataset is invariant for the most frequent allele\nCHROM\tPOS\tQUAL\tREASON\n", file = omittedLoci, append = FALSE)
+  cat("CHROM\tPOS\tQUAL\tallele0\tallele2\n", file = includedLoci, append = FALSE)
 
 
 
@@ -268,7 +289,9 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
     }
 
 
-    outfile <- file(paste0(filename, "-01.txt"), open = "wt")
+    outfile <- file(paste0(filename, "-", formatC(1, width = 3, flag = 0), ".txt"),
+      open = "wt"
+    )
 
     on.exit(close(infile))
     on.exit(close(outfile), add = TRUE)
@@ -303,7 +326,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
         nLines <- nLines + 1
         if (chunk != 1 && nLines > chunk) {
           close(outfile)
-          outfile <- file(paste0(filename, "-", formatC(nFiles, width = max(3, nchar(origChunk)), flag = 0), ".txt"),
+          outfile <- file(paste0(filename, "-", formatC(nFiles, width = 3, flag = 0), ".txt"),
             open = "wt"
           )
           message("Done with chunk ", nFiles - 1)
