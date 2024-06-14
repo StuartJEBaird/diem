@@ -8,9 +8,9 @@
 #'
 #'
 #' @param files character vector with paths to files with genotypes.
-#' @param ploidy list of length equal to length of \code{files}. Each element of the list
+#' @param ploidy logical or list of length equal to length of \code{files}. Each element of the list
 #'    contains a numeric vector with ploidy numbers for all individuals specified in
-#'    the \code{ChosenInds}.
+#'    the \code{files}.
 #' @param markerPolarity \code{FALSE} or list of logical vectors.
 #' @param ChosenInds numeric vector of indices of individuals to be included in the analysis.
 #' @param epsilon numeric, specifying how much the hypothetical diagnostic markers should
@@ -19,6 +19,7 @@
 #' @param verbose logical or character with path to directory where run diagnostics will
 #'    be saved.
 #' @param nCores numeric. Number of cores to be used for parallelisation. Must be
+#'     at most equal to the number of files in the \code{files} argument, and
 #'     \code{nCores = 1} on Windows.
 #' @param maxIterations numeric.
 #' @param ... additional arguments.
@@ -48,17 +49,26 @@
 #'   ploidy for the sex chromosomes should be vectors reflecting that females have two X
 #'   chromosomes, but males only one, and females have no Y chromosomes:
 #'   \code{ploidy = list(rep(2, 3), c(1, 2, 2), c(1, 0, 0))}.
+#'
+#'   When \code{verbose = TRUE}, \code{diem} will output multiple files with information
+#'   on the iterations of the EM algorithm, including tracking marker polarities and the
+#'   respective likelihood-based diagnostics. See vignette \code{vignette("diem_output",
+#'   package = "diemr")} for a detailed explanation of the individual output files.
 #' @note To ensure that the data input format of the genotype files, ploidies and individual
 #'   selection are readable for \code{diem}, first use \code{\link{CheckDiemFormat}}.
 #'   Fix all errors, and run \code{diem} only once the checks all passed.
+#'
+#'   The working directory or a folder optionally specified in the \code{verbose}
+#'   argument must have write permissions. \code{diem} will store temporary files in the
+#'   location and output results files.
 #' @seealso \code{\link{CheckDiemFormat}}
 #' @return A list including suggested marker polarities, diagnostic indices and support for all
-#' 		markers, four genomic state counts matrix for all individuals, and polarity changes 
+#' 		markers, four genomic state counts matrix for all individuals, and polarity changes
 #'      for the EM iterations.
 #' @examples
 #' # set up input genotypes file names, ploidies and selection of individual samples
-#' inputFile <- system.file("extdata", "data6x3.txt", package = "diemr")
-#' ploidies <- list(c(2, 1, 2, 2, 2, 1))
+#' inputFile <- system.file("extdata", "data7x3.txt", package = "diemr")
+#' ploidies <- list(c(2, 1, 2, 2, 2, 1, 2))
 #' inds <- 1:6
 #'
 #' # check input data
@@ -68,7 +78,7 @@
 #'
 #' # run diem
 #' \dontrun{
-#' # diem will store temporal files during EM iterations
+#' # diem will write temporal files during EM iterations
 #' # prior to running diem, set the working directory to a location with write permission
 #' fit <- diem(files = inputFile, ChosenInds = inds, ploidy = ploidies, nCores = 1)
 #'
@@ -83,7 +93,7 @@
 #' @importFrom parallel detectCores
 
 
-diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
+diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
                  epsilon = 0.99999, verbose = FALSE, nCores = parallel::detectCores() - 1,
                  maxIterations = 50, ...) {
   if (is.na(nCores)) nCores <- 1
@@ -97,9 +107,9 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
     folder <- verbose
     verbose <- TRUE
     lfolder <- paste0(folder, "/likelihood")
-    
+
     if (!dir.exists(lfolder)) dir.create(lfolder)
-    
+
     logfile <- paste0(folder, "/log.txt")
   } else {
     folder <- getwd()
@@ -140,6 +150,14 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
     return(genotypes)
   }
 
+  sImportFinal <- function(file) {
+    genotypes <- read.table(file = file, as.is = TRUE)
+    genotypes <- as.data.frame(strsplit(unlist(genotypes), split = ""))[-1, ]
+    if (any(grepl("U", genotypes))) {
+      genotypes[genotypes == "U"] <- "_"
+    }
+    return(genotypes)
+  }
 
 
   #############################################
@@ -148,11 +166,14 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
   GetI4ofOneCompartment <- function(file, changePolarity = FALSE, ...) {
     # read file with genotypes, individuals are in rows, markers in columns
-    genotypes <- sImport(file = file)
+    if (!Finalising) {
+      genotypes <- sImport(file = file)
+    } else {
+      genotypes <- sImportFinal(file = file)
+    }
     n <- ncol(genotypes)
 
     if (length(changePolarity) != n) {
-      warning("Marker polarities for compartment ", file, " are not equal to the number of markers (", n, "). Using random polarities.")
       n2 <- floor(n / 2)
       changePolarity <- sample(c(rep(TRUE, n2), rep(FALSE, n - n2)),
         size = n
@@ -231,7 +252,6 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   #####################################
 
   RelabelCompartment <- function(file, changePolarity = TRUE, compartment, ...) {
-
     # read file with genotypes
     genotypes <- sImport(file)
 
@@ -242,7 +262,6 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
     # populate changePolarity
     if (length(changePolarity) == 1) {
-      warning("changePolarity from within RelabelCompartment is of length 1. Using it for all markers")
       changePolarity <- rep(changePolarity, nMarkers)
     }
 
@@ -270,17 +289,20 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
       )
     }
 
+
     write.table(changedMarkers,
       sep = "\t", row.names = FALSE, col.names = FALSE, append = TRUE,
       file = paste0(lfolder, "/MarkersWithChangedPolarity", compartment, ".txt")
     )
-    write.table(data.frame(
-      newPolarity = newPolarity,
-      DI = unlist(lapply(Polarity, function(x) x[[2]])),
-      Support = unlist(lapply(Polarity, function(x) x[[3]]))
-    ),
-    file = paste0(lfolder, "/MarkerDiagnostics", IterationCount, "-", compartment, ".txt"), row.names = FALSE, sep = "\t"
+    write.table(
+      data.frame(
+        newPolarity = newPolarity,
+        DI = unlist(lapply(Polarity, function(x) x[[2]])),
+        Support = unlist(lapply(Polarity, function(x) x[[3]]))
+      ),
+      file = paste0(lfolder, "/MarkerDiagnostics", IterationCount, "-", compartment, ".txt"), row.names = FALSE, sep = "\t"
     )
+
 
     return(list(
       newPolarity = newPolarity,
@@ -309,15 +331,14 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
     # check if the overall state is the same as before
     if (res[[1]]) {
       iterations <- which(duplicatedMarkerSets != rev(duplicated(rev(markers[, 2]))))
-      if (length(iterations) != 2) stop("Something is very wrong with CheckDuplicated. Infinite loop risk. Run diem with different null polarities")
-      res[[1]] <- all(I4changes[[iterations[1]]] == I4changes[[iterations[2]]])
+      res[[1]] <- all(I4changes[[iterations[length(iterations)]]] == I4changes[[iterations[1]]])
       if (verbose & res[[1]]) {
         cat("\nIterations ", iterations, "called the same marker sets to change and the overall I4 was identical in both cases. Congratulations, the EM converged.\n",
           file = logfile, append = TRUE
         )
       }
       # include previous iterations with identical state in result
-      res[[2]] <- iterations
+      res[[2]] <- iterations[c(1, length(iterations))]
     }
 
     return(res)
@@ -371,11 +392,13 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   SmallDataCorrection <- function() {
     minI4 <- min(I4)
     # return(max(c(0, SmallDataErrorTermGoesTo - minI4)))
-    res <- ifelse(test = minI4 > SmallDataErrorTermGoesTo, 
+    res <- ifelse(test = minI4 > SmallDataErrorTermGoesTo,
       yes = -1,
       no = ifelse(minI4 == SmallDataErrorTermGoesTo,
         yes = 0,
-        no = 1))
+        no = 1
+      )
+    )
     return(res)
   }
 
@@ -409,6 +432,7 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   #  declare variables   #
   ########################
 
+  Finalising <- FALSE
   IterationCount <- 1
   SmallDataErrorTermGoesTo <- 1
   ActualLimitCycle <- FALSE
@@ -425,16 +449,20 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
   # Check ChosenInds
   if (missing(ChosenInds)) {
-    warning("ChosenInds is missing, using all individuals")
+    message("ChosenInds is missing, using all individuals")
     ChosenInds <- 1:(nchar(readLines(files[1])[1]) - 1)
   }
 
   # Check markerPolarity
   if (!inherits(markerPolarity, "list")) {
-    warning("markerPolarity is not a list, using random marker polarities")
     markerPolarity <- list(FALSE)[rep(1, length(files))]
   }
 
+  # Check ploidy
+  if (!inherits(ploidy, "list")) {
+    ploidy <- rep(list(rep(2, nchar(readLines(files[1])[1]) - 1)), length(files))
+    message("ploidy is missing, assuming all compartments to be diploid for all individuals")
+  }
 
   # I4compartments is a list
   I4compartments <- parallel::mclapply(
@@ -457,13 +485,13 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
   # allele counts accross compartments
   I4compartments <- lapply(I4compartments, FUN = function(x) x[[1]])
-  A4compartments <- Map("*", I4compartments, ploidy)
+  A4compartments <- Map("*", I4compartments, lapply(ploidy, "[", ChosenInds))
 
 
 
   # small data correction
   I4errorTermDistributor <- compartmentSizes / nMarkers
-  A4errorTermDistributor <- Map("*", ploidy, I4errorTermDistributor)
+  A4errorTermDistributor <- Map("*", lapply(ploidy, "[", ChosenInds), I4errorTermDistributor)
   SmallDataI4errorTerm <- SmallDataCorrection()
   SmallDataA4errorTerm <- Map("*", A4errorTermDistributor, SmallDataI4errorTerm)
   I4 <- I4 + SmallDataI4errorTerm
@@ -498,11 +526,15 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   OriginalHI <- apply(A4, MARGIN = 1, FUN = pHetErrOnStateCount)[1, ]
 
   # I4 corrected for epsilon-weighted hybrid index
+  modelfolder <- paste0(folder, "/modelDiagnostics0")
+
+
   V4 <- ModelOfDiagnostic(
     I4 = I4,
     OriginalHI = OriginalHI,
     epsilon = epsilon,
-    verbose = verbose, ...
+    verbose = verbose,
+    folder = modelfolder
   )
 
   # DI for state counts
@@ -536,7 +568,7 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   #########################
 
   while (!ActualLimitCycle & (IterationCount <= maxIterations)) {
-    message("diadem iteration: ", IterationCount)
+    message("diem iteration: ", IterationCount)
 
 
     ###################################
@@ -562,7 +594,7 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
     )
 
     deltaI4compartments <- lapply(res.polarity, FUN = function(x) x[[2]])
-    deltaA4compartments <- Map("*", deltaI4compartments, ploidy)
+    deltaA4compartments <- Map("*", deltaI4compartments, lapply(ploidy, "[", ChosenInds))
     deltaI4 <- Reduce("+", deltaI4compartments)
 
     newPolarity <- lapply(res.polarity, FUN = function(x) x[[1]])
@@ -621,14 +653,17 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
 
 
     # update FlatLogI4 - DI for state counts
-    modelfolder <- paste0("modelDiagnostics", IterationCount)
-    dir.create(modelfolder)
+    modelfolder <- paste0(folder, "/modelDiagnostics", IterationCount)
+    if (verbose) {
+      dir.create(modelfolder, showWarnings = FALSE)
+    }
     OriginalHI <- apply(A4, MARGIN = 1, FUN = pHetErrOnStateCount)[1, ]
     V4 <- ModelOfDiagnostic(
       I4 = I4,
       OriginalHI = OriginalHI,
       epsilon = epsilon,
-      verbose = modelfolder, ...
+      folder = modelfolder,
+      verbose = verbose
     )
     FlatLogI4 <- apply(V4,
       MARGIN = 1,
@@ -667,29 +702,53 @@ diem <- function(files, ploidy = list(2), markerPolarity = FALSE, ChosenInds,
   } # end while for cycle limit
 
 
+  Finalising <- TRUE
+  message("Finalising diem output ", Sys.time())
 
   DI <- summariseDIacrossCompartments(iteration = ExistingLCcandidate[[2]][1] + 1)
-  I4 <- I4changes[[ExistingLCcandidate[[2]][1] + 1]] - SmallDataI4errorTermChanges[[ExistingLCcandidate[[2]][1] + 1]]
-  rownames(I4) <- ChosenInds
-  HI <- HIchanges[[ExistingLCcandidate[[2]][1] + 1]]
+  #  I4 <- I4changes[[ExistingLCcandidate[[2]][1] + 1]] - SmallDataI4errorTermChanges[[ExistingLCcandidate[[2]][1] + 1]]
+  #  rownames(I4) <- ChosenInds
+  #  HI <- HIchanges[[ExistingLCcandidate[[2]][1] + 1]]
 
-  if (verbose) {
-    write.table(DI,
-      file = paste0(folder, "/MarkerDiagnosticsWithOptimalPolarities.txt"), sep = "\t", row.names = FALSE
-    )
-    write.table(I4,
-      file = paste0(folder, "/I4withOptimalPolarities.txt"), sep = "\t",
-      row.names = TRUE, col.names = c("_", "0", "1", "2")
-    )
-    write.table(HI,
-      sep = "\t",
-      row.names = ChosenInds, file = paste0(folder, "/HIwithOptimalPolarities.txt")
-    )
+
+
+
+
+  I4compartments <- list()
+  for (i in 1:length(files)) {
+    I4compartments[[i]] <-
+      GetI4ofOneCompartment(
+        file = files[i],
+        changePolarity = DI$newPolarity[sum(c(1, compartmentSizes)[1:i]):sum(compartmentSizes[1:i])]
+      )
   }
+  I4compartments <- lapply(I4compartments, FUN = function(x) x[[1]])
+  I4 <- Reduce("+", I4compartments)
+
+  A4compartments <- Map("*", I4compartments, ploidy)
+  A4 <- Reduce("+", A4compartments)
+
+
+  HI <- apply(A4, 1, pHetErrOnStateCount)[1, ]
+
+
+  write.table(DI,
+    file = paste0(folder, "/MarkerDiagnosticsWithOptimalPolarities.txt"), sep = "\t", row.names = FALSE
+  )
+  write.table(I4,
+    file = paste0(folder, "/I4withOptimalPolarities.txt"), sep = "\t",
+    row.names = TRUE, col.names = c("_", "0", "1", "2")
+  )
+  write.table(HI,
+    sep = "\t",
+    col.names = "HybridIndex",
+    file = paste0(folder, "/HIwithOptimalPolarities.txt")
+  )
+
 
   # delete folder with help files for likelihood calculations
   if (!verbose) {
-    unlink("lfolder", recursive = TRUE)
+    unlink(lfolder, recursive = TRUE)
   }
 
   return(list(

@@ -10,8 +10,8 @@
 #'           homozygots for allele 2. Individuals in rows.
 #' @param OriginalHI numeric vector of length equal to number of rows in \code{I4},
 #'           representing hybrid indices of individuals.
+#' @param folder character specifying path to a folder for the verbose output.
 #' @inheritParams diem
-#' @param ... parameters to be passed to other functions.
 #' @details The \code{OriginalHI} can be calculated with \code{\link{pHetErrOnStateCount}}.
 #' @return Matrix with dimensions of I4.
 #' @importFrom grDevices dev.off pdf
@@ -20,23 +20,10 @@
 #' @importFrom zoo rollmean
 #' @seealso \code{\link{diem}} for utilising the model to determine appropriate marker
 #'   polarisation in estimating barriers to geneflow.
-#' @examples
-#' # state count matrix
-#' dat <- matrix(c(0, 0, 1, 3, 1, 2, 2, 0, 2, 1, 4, 1), ncol = 4)
-#'
-#' # hybrid index calculation, assuming diploid markers
-#' HI <- apply(dat * 2, MARGIN = 1, FUN = pHetErrOnStateCount)[1, ]
-#'
-#' # run model of diagnostics, with the weight of the ideal diagnostic marker being 0.8
-#' ModelOfDiagnostic(I4 = dat, OriginalHI = HI, epsilon = 0.8)
-#' #      [,1] [,2] [,3] [,4]
-#' # [1,]  0.0  5.4  0.4  0.2
-#' # [2,]  0.0  0.2  0.0  5.6
-#' # [3,]  0.4  4.4  0.8  0.4
-#' @export
 
 
-ModelOfDiagnostic <- function(I4, OriginalHI, epsilon = 0.99, verbose = FALSE, ...) {
+
+ModelOfDiagnostic <- function(I4, OriginalHI, epsilon = 0.99, verbose = FALSE, folder = "likelihood", ...) {
 
   # if the whole matrix of individuals statistics is provided, select only the hybrid index
   # assumes result from pHetErrOnStateCount()
@@ -91,17 +78,8 @@ ModelOfDiagnostic <- function(I4, OriginalHI, epsilon = 0.99, verbose = FALSE, .
     betaOfRescaledHI[low] <- (WarpSwitch - RescaledHIsWithNAs[low]) / WarpSwitch
 
     # write diagnostics
-    if (inherits(verbose, "character")) {
-      folder <- verbose
-      verbose <- TRUE
-    } else {
-      folder <- NA
-    }
-    if (verbose & is.na(folder)) {
-      if (!dir.exists("diagnostics")) dir.create("diagnostics")
-      folder <- "diagnostics"
-    }
     if (verbose) {
+      if(!dir.exists(folder)) dir.create(folder)
       pdf(paste0(folder, "/SortedRescaledHybridIndex.pdf"), height = 5)
       plot(SRHI,
         xlab = "Inds sorted by rescaled hybrid index", ylab = "Rescaled hybrid index",
@@ -126,7 +104,7 @@ ModelOfDiagnostic <- function(I4, OriginalHI, epsilon = 0.99, verbose = FALSE, .
       points(RescaledHIsWithNAs, betaOfRescaledHI, ...)
       dev.off()
 
-      write.table(round(OriginalHI, 4), file = paste0(folder, "/OriginalHI.txt"), sep = "\t", row.names = TRUE)
+      write.table(round(OriginalHI, 4), file = paste0(folder, "/HI.txt"), sep = "\t", row.names = TRUE)
       cat("######  ModelOfDiagnostics WarpSwitch  #######\n\n", file = paste0(folder, "/WarpSwitch.txt"), append = FALSE)
       cat("WarpSwitch with maximum change in hybrid index: ", round(WarpSwitch, 4), "\n\n", file = paste0(folder, "/WarpSwitch.txt"), append = TRUE)
       cat("WarpString for a diagnostic marker: \n", paste(WarpString, collapse = ""), "\n\n", file = paste0(folder, "/WarpSwitch.txt"), append = TRUE)
