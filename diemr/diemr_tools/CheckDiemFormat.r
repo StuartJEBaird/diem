@@ -7,8 +7,8 @@
 #' @details The input file must have genotypes of one marker for all individuals on one
 #'  line. The line must start with a letter "S" and contain only characters
 #'  "_" or "U" for unknown genotypes or a third/fourth allele, "0" for homozygots for
-#'  allele 1, "1" for heterozygots, and "2" for homozygots for allele 2. Check the 
-#'  vignette with \code{browseVignettes(package = "diemr")} for the example of the 
+#'  allele 1, "1" for heterozygots, and "2" for homozygots for allele 2. Check the
+#'  vignette with \code{browseVignettes(package = "diemr")} for the example of the
 #'  input format.
 #'
 #'  Ploidies must be given as a list with each element corresponding to a genomic
@@ -19,17 +19,15 @@
 #'    potential problems. When too many lines contain problems, the first six are given.
 #' @examples
 #' # set up input genotypes file names, ploidies and selection of individual samples
-#' inputFile <- system.file("extdata", "data6x3.txt", package = "diemr")
-#' ploidies <- list(c(2, 1, 2, 2, 2, 1))
-#' inds <- 1:6
+#' inputFile <- system.file("extdata", "data7x3.txt", package = "diemr")
+#' ploidies <- list(c(2, 1, 2, 2, 2, 1, 2))
+#' inds <- 1:7
 #'
 #' # check input data
 #' CheckDiemFormat(files = inputFile, ploidy = ploidies, ChosenInds = inds)
 #' #  File check passed: TRUE
 #' #  Ploidy check passed: TRUE
 CheckDiemFormat <- function(files, ChosenInds, ploidy) {
-
-
   ##########################################
   # Checks format in one compartment file
   ##########################################
@@ -89,17 +87,18 @@ CheckDiemFormat <- function(files, ChosenInds, ploidy) {
   message("File check passed: ", all(unlist(res)))
 
   res <- FALSE
+  nIndividuals <- nchar(readLines(files[1])[1]) - 1
 
-  # Check ploidies to be a list of length(files) vectors with length of length(ChosenInds)
+  # Check ploidies to be a list of length(files) vectors with length of number of individuals in the file
   if (!inherits(ploidy, "list")) {
-    stop("Ploidy must be a list of length ", length(files), " with elements being numeric vectors of length ", length(ChosenInds))
+    stop("Ploidy must be a list of length ", length(files), " with elements being numeric vectors of length ", nIndividuals)
   } else {
     if (length(ploidy) != length(files)) {
       stop("Length of ploidy (", length(ploidy), ") is not equal to the length of files (", length(files), ").")
     } else {
-      pLength <- unlist(lapply(ploidy, FUN = function(x) length(x) == length(ChosenInds)))
+      pLength <- unlist(lapply(ploidy, FUN = function(x) length(x) == nIndividuals))
       if (any(!pLength)) {
-        stop("Ploidy for compartment(s) ", which(!pLength), " is not a numeric vector of length ", length(ChosenInds))
+        stop("Ploidy for compartment(s) ", which(!pLength), " is not a numeric vector of length ", nIndividuals)
       } else {
         if (!all(unlist(ploidy) %in% c(0, 1, 2))) {
           nPloidy <- matrix(unlist(ploidy) %in% c(0, 1, 2), ncol = length(files))

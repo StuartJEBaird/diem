@@ -7,20 +7,19 @@
 #'     object. Diploid data are currently supported.
 #' @param filename character vector with a path where to save the converted genotypes.
 #' @param chunk numeric indicating by how many markers should the result be split into
-#'     separate files. \code{chunk = 1} saves all markers into one file.
+#'     separate files.
 #' @param requireHomozygous logical whether to require the marker to have at least one
 #'     homozygous individual for each allele.
-#' @param ... additional arguments.
 #'
 #' @details Importing vcf files larger than 1GB, and those containing multiallelic
-#'    genotypes is not recommended. Instead, the path to the
-#'    vcf file in \code{SNP} reads the file line by line, and might be a solution for
+#'    genotypes is not recommended. Instead, use the path to the
+#'    vcf file in \code{SNP}. \code{vcf2diem} then reads the file line by line, which is
+#'    a preferred solution for data conversion, especially for
 #'    very large and complex genomic datasets.
 #'
 #'    The number of files \code{vcf2diem} creates depends on the \code{chunk} argument
 #'    and class of the \code{SNP} object.
 #'
-#'    * When \code{chunk = 1}, one output file will be created.
 #'    * Values of \code{chunk < 100} are interpreted as the number of files into which to
 #'    split data in \code{SNP}. For \code{SNP} object of class \code{vcfR}, the number
 #'    of markers per file is calculated from the dimensions of \code{SNP}. When class
@@ -28,16 +27,31 @@
 #'    from a model with a message. If this number of markers per file is inappropriate
 #'    for the expected
 #'    output, provide the intended number of markers per file in \code{chunk} greater
-#'    than 100. \code{vcf2diem} will scan the whole input in the \code{SNP} file, creating
+#'    than 100 (values greater than 10000 are recommended for genomic data). 
+#'    \code{vcf2diem} will scan the whole input specified in the \code{SNP} file, creating
 #'    additional output files until the last line in \code{SNP} is reached.
 #'    * Values of \code{chunk >= 100} mean that each output file
 #'    in diem format will contain \code{chunk} number of lines with the data in \code{SNP}.
 #'
-#'    When the vcf file contains markers non-informative for genome polarisation, those
-#'    those are removed and listed in a file *omittedLoci.txt* in the working directory.
-#'    The omitted loci are identified by their information in the CHROM and POS columns.
-#'    The CHROM and POS information for loci included in the converted files are in
-#'    *includedLoci.txt*.
+#'    When the vcf file contains markers not informative for genome polarisation, 
+#'    those are removed and listed in a file ending with *omittedSites.txt* in the  
+#'    directory specified in the \code{SNP} argument or in the working directory.
+#'    The omitted loci are identified by their information in the CHROM and POS columns, 
+#'    and include the QUAL column data. The last column is an integer specifying
+#'    the reason why the respective marker was omitted. The reasons why markers are
+#'    not informative for genome polarisation using \code{diem} are:
+#'    1. Marker has fewer than 2 alleles representing substitutions.
+#'    2. Required homozygous individuals for the 2 most frequent alleles are not present 
+#'    (optional, controlled
+#'    by the \code{requireHomozygous} argument).
+#'    3. The second most frequent allele is found only in one heterozygous individual.
+#'    4. Dataset is invariant for the most frequent allele.
+#'    5. Dataset is invariant for the allele listed as the first ALT in the vcf input.
+#'
+#'    The CHROM, POS, and QUAL information for loci included in the converted files are 
+#'    listed in the file ending with *includedSites.txt*. Additional columns show which 
+#'    allele is 
+#'    encoded as 0 in its homozygous state and which is encoded as 2.
 #' @return No value returned, called for side effects.
 #' @importFrom vcfR getFIX extract.gt
 #' @importFrom tools file_ext file_path_sans_ext
@@ -50,14 +64,11 @@
 #' # vcf2diem will write files to a working directory or a specified folder
 #' # make sure the working directory or the folder are at a location with write permission
 #' myofile <- system.file("extdata", "myotis.vcf", package = "diemr")
-#' myovcf <- vcfR::read.vcfR(myofile)
 #'
 #' vcf2diem(SNP = myofile, filename = "test1")
 #' vcf2diem(SNP = myofile, filename = "test2", chunk = 3)
-#' vcf2diem(SNP = myovcf, filename = "test3")
-#' vcf2diem(SNP = myovcf, filename = "test4", chunk = 3)
 #' }
-vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
+vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
   if (!inherits(SNP, c("character", "vcfR"), which = FALSE)) {
     stop("'SNP' must be either a 'vcfR' object or a 'character' string with path to a vcf file.")
   }
@@ -106,8 +117,8 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
     filename <- filepath
     # file names for loci positions
     lociFiles <- c(
-      paste0(filepath, "-omittedLoci.txt"),
-      paste0(filepath, "-includedLoci.txt")
+      paste0(filepath, "-omittedSites.txt"),
+      paste0(filepath, "-includedSites.txt")
     )
     # estimate chunk size
     if (chunk < 100) {
@@ -127,7 +138,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
       }
     }
     if (chunk >= 100) {
-      message("Expecting to include ", chunk, " markers per diem file.")
+      message("Will include up to", chunk, " markers per diem file.")
     }
     return(list(filename, chunk, origChunk, lociFiles))
   }
@@ -194,14 +205,14 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
     } else if (I4[, 4] == 0 && I4[, 3] == 0) { # invariant for the most frequent allele
       nonInformative <- TRUE
       reason <- 4
-    } else if (I4[, 2] == 0 && I4[, 3] == 0) { # invariant for the second most frequent allele (should never happen, bug check for majorAlleles)
+    } else if (I4[, 2] == 0 && I4[, 3] == 0) { # invariant for the second most frequent allele
       nonInformative <- TRUE
       reason <- 5
     }
 
     if (any(nonInformative)) {
       cat(paste(c(INFO[nonInformative, c(1:2, 6)], reason), collapse = "\t"),
-        file = omittedLoci,
+        file = omittedSites,
         sep = "\n",
         append = TRUE
       )
@@ -214,7 +225,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
           ),
           collapse = "\t"
         ),
-        file = includedLoci,
+        file = includedSites,
         sep = "\n",
         append = TRUE
       )
@@ -237,12 +248,12 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ...) {
   filename <- outputs[[1]]
   chunk <- outputs[[2]]
   origChunk <- outputs[[3]]
-  omittedLoci <- outputs[[4]][1]
-  includedLoci <- outputs[[4]][2]
+  omittedSites <- outputs[[4]][1]
+  includedSites <- outputs[[4]][2]
 
   # initialize loci placement files
-  cat("## Reasons for omitting loci:\n## 1 - Marker has fewer than 2 alleles representing substitutions\n## 2 - Required homozygous individuals for the 2 most frequent alleles are not present\n## 3 - The second most frequent allele is found only in one heterozygous individual\n## 4 - Dataset is invariant for the most frequent allele\nCHROM\tPOS\tQUAL\tREASON\n", file = omittedLoci, append = FALSE)
-  cat("CHROM\tPOS\tQUAL\tallele0\tallele2\n", file = includedLoci, append = FALSE)
+  cat("## Reasons for omitting loci:\n## 1 - Marker has fewer than 2 alleles representing substitutions\n## 2 - Required homozygous individuals for the 2 most frequent alleles are not present\n## 3 - The second most frequent allele is found only in one heterozygous individual\n## 4 - Dataset is invariant for the most frequent allele\n## 5 - Dataset is invariant for the allele listed as the first ALT in the vcf input\nCHROM\tPOS\tQUAL\tREASON\n", file = omittedSites, append = FALSE)
+  cat("CHROM\tPOS\tQUAL\tallele0\tallele2\n", file = includedSites, append = FALSE)
 
 
 
