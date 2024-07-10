@@ -3,8 +3,8 @@
 #' Reads genotypes from a file and changes marker polarity.
 #'
 #' @inheritParams diem
-#' @param file character vector with a single path to a file with genotypes.
 #' @param changePolarity logical vector with length equal to the number of markers.
+#' @param ... optional numeric vector of `compartmentSizes`.
 #' @details For details on the input data format, check the \code{file} with
 #'   \code{CheckDiemFormat}.
 #'
@@ -19,9 +19,10 @@
 #' @export
 #' @examples
 #' dat <- importPolarized(
-#'   file = system.file("extdata", "data6x3.txt", package = "diemr"),
+#'   files = system.file("extdata", "data7x3.txt", package = "diemr"),
 #'   changePolarity = c(FALSE, TRUE, TRUE),
-#'   ChosenInds = 1:6
+#'   ChosenInds = 1:6,
+#'   ChosenSites = "all"
 #' )
 #' dat
 #' #    m1  m2  m3
@@ -31,28 +32,41 @@
 #' # 4 "1" "2" "0"
 #' # 5 "2" "2" "1"
 #' # 6 "2" "2" "_"
+importPolarized <- function(files, changePolarity, ChosenInds, ChosenSites, nCores = 1, ...) {
+  ChosenSites <- resolveCompartments(files = files, toBeCompartmentalized = ChosenSites, ...)
+message("ChosenSites done ", Sys.time())
+  markerLabels <- which(unlist(ChosenSites))
+  changePolarity <- resolveCompartments(files = files, toBeCompartmentalized = changePolarity, ...)
+message("changePolarity done ", Sys.time())
 
-importPolarized <- function(file, changePolarity, ChosenInds) {
+  allCompartments <- parallel::mclapply(1:length(files), mc.cores = nCores,
+    FUN = function(i){
+    if(sum(ChosenSites[[i]]) == 0){ 
+    return(NA)
+    }
+  
+    genotypes <- read.table(file = files[i], as.is = TRUE)
+    if ((nchar(genotypes[1, ]) - 1) < max(ChosenInds)) {
+      stop("File ", files[[i]], " contains fewer individuals than the maximum index specified in ChosenInds.")
+    }
+    # select genotypes for chosen individuals and markers
+    genotypes <- as.data.frame(strsplit(unlist(genotypes), split = ""))[-1, ][ChosenInds, ChosenSites[[i]], drop = FALSE]
+    if (any(grepl("U", genotypes))) {
+      genotypes[genotypes == "U"] <- "_"
+    }
+    # polarise chosen markers
+    genotypes <- apply(cbind(as.matrix(changePolarity[[i]][ChosenSites[[i]]]), t(genotypes)),
+      MARGIN = 1,
+      FUN = function(x) emPolarise(origM = x[2:length(x)], changePolarity = as.logical(x[1]))
+    )
+    return(genotypes)
+    })
+  
 
-  genotypes <- read.table(file = file, as.is = TRUE)
-  if ((nchar(genotypes[1, ]) - 1) < max(ChosenInds)) {
-    stop("File ", file, " contains fewer individuals than the maximum index specified in ChosenInds.")
-  }
-  if (nrow(genotypes) != length(changePolarity)) {
-    stop("File ", file, " has ", nrow(genotypes), " markers, but changePolarity has length ", length(changePolarity))
-  }
-  genotypes <- as.data.frame(strsplit(unlist(genotypes), split = ""))[-1, ][ChosenInds, ]
-  if (any(grepl("U", genotypes))) {
-    genotypes[genotypes == "U"] <- "_"
-  }
-  # polarise markers
-  genotypes <- apply(cbind(as.matrix(changePolarity), t(genotypes)),
-    MARGIN = 1,
-    FUN = function(x) emPolarise(origM = x[2:length(x)], changePolarity = as.logical(x[1]))
-  )
-  rownames(genotypes) <- ChosenInds
-  colnames(genotypes) <- paste0("m", 1:ncol(genotypes))
+  allCompartments <- Filter(Negate(anyNA), allCompartments)
+  allCompartments <- do.call(cbind, allCompartments)
+  rownames(allCompartments) <- ChosenInds
+  colnames(allCompartments) <- paste0("m", markerLabels)
   
-  return(genotypes)
-  
+  return(allCompartments)
 }
