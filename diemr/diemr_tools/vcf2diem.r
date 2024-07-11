@@ -138,7 +138,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
       }
     }
     if (chunk >= 100) {
-      message("Will include up to", chunk, " markers per diem file.")
+      message("Will include up to ", chunk, " markers per diem file.")
     }
     return(list(filename, chunk, origChunk, lociFiles))
   }
@@ -196,7 +196,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
     # identify non-informative markers
     I4 <- t(apply(SNP, MARGIN = 1, FUN = sStateCount))
     nonInformative <- FALSE
-    if (requireHomozygous && (I4[, 2] == 0 && I4[, 4] == 0)) { # homozygous individuals missing
+    if (requireHomozygous && (I4[, 2] == 0 || I4[, 4] == 0)) { # homozygous individuals missing
       nonInformative <- TRUE
       reason <- 2
     } else if ((I4[, 3] == 1 && (I4[, 2] == 0 || I4[, 4] == 0))) { # only one heterozygous individual
@@ -309,7 +309,7 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
 
     nLines <- 1
     nFiles <- 2
-    Marker <- readLines(infile, n = 1)
+    Marker <- readLines(infile, n = 1, skipNul = TRUE)
 
     # skip meta information
     while (substr(Marker, 1, 1) == "#") {
