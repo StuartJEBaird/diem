@@ -75,6 +75,7 @@ plotPolarized <- function(genotypes, HI, cols = c("#FFFFFF", "#800080", "#FFE500
     ylab = "Individuals",
     axes = FALSE,
     useRaster = TRUE,
+    breaks = 0:4,
     # axis defaults
     side = 2,
     at = 1:nInds,
@@ -83,7 +84,7 @@ plotPolarized <- function(genotypes, HI, cols = c("#FFFFFF", "#800080", "#FFE500
     las = 1
   ), userArgs)
   acceptedImageArgs <- c(
-    "zlim", "xlim", "ylim", "add", "xaxs", "yaxs", "xlab", "ylab",
+    "zlim", "xlim", "ylim", "add", "xaxs", "yaxs", "xlab", "ylab", "breaks",
     "useRaster", "asp", "cex", "cex.lab", "cex.main", "cex.sub", "axes", "col.axis",
     "cex.axis", "family", "font", "font.axis", "font.lab", "font.main", "font.sub", "lab",
     "xpd"
