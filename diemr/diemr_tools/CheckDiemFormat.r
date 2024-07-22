@@ -38,19 +38,16 @@ CheckDiemFormat <- function(files, ChosenInds, ploidy) {
     if (!inherits(file, "character")) {
       stop("The file argument needs to be a character string specifying the path to the input file. Instead, file is ", class(file)[1])
     } else {
-    
       # file exists
       if (!file.exists(file)) {
         stop("File ", file, " cannot be found. A full path to the file might be necessary, or change working directory correspondingly.")
       } else {
-      
         # markers start with a character
         dat <- readLines(file)
         sFormat <- grepl(pattern = "^S", x = dat, ignore.case = FALSE)
         if (any(!sFormat)) {
           stop("Lines ", paste(head(which(!sFormat)), collapse = ", "), " in file ", file, " do not start with a letter 'S'. Prefix 'S' before the genotype string. Check also for invisible characters.")
         } else {
-        
           # number of individuals equal
           nIndividuals <- nchar(dat) - 1
           if (length(unique(nIndividuals)) != 1) {
@@ -62,12 +59,10 @@ CheckDiemFormat <- function(files, ChosenInds, ploidy) {
             wrongNind <- Mode(nIndividuals) - nIndividuals != 0
             stop("Markers on lines ", paste(head(which(wrongNind)), collapse = ", "), " in file ", file, " were genotyped for a different number of individuals. Make sure the line lengths are the same.")
           } else {
-          
             # maximum index of ChosenInds
             if (max(nIndividuals) < max(ChosenInds)) {
               stop("File ", file, " contains fewer individuals than the maximum index specified in ChosenInds.")
             } else {
-            
               # _012 symbols
               fourStateQdata <- grepl("[^S_U012]", dat)
               if (any(fourStateQdata)) {
@@ -94,25 +89,29 @@ CheckDiemFormat <- function(files, ChosenInds, ploidy) {
   nIndividuals <- nchar(readLines(files[1])[1]) - 1
 
   # Check ploidies to be a list of length(files) vectors with length of number of individuals in the file
-  if (!inherits(ploidy, "list")) {
-    stop("Ploidy must be a list of length ", length(files), " with elements being numeric vectors of length ", nIndividuals)
+  if (inherits(ploidy, "logical") && !ploidy) {
+    res <- TRUE
   } else {
-    if (length(ploidy) != length(files)) {
-      stop("Length of ploidy (", length(ploidy), ") is not equal to the length of files (", length(files), ").")
+    if (!inherits(ploidy, "list")) {
+      stop("Ploidy must be a list of length ", length(files), " with elements being numeric vectors of length ", nIndividuals, " or ploidy = FALSE.")
     } else {
-      pLength <- unlist(lapply(ploidy, FUN = function(x) length(x) == nIndividuals))
-      if (any(!pLength)) {
-        stop("Ploidy for compartment(s) ", paste(which(!pLength), collapse = ", "), " is not a numeric vector of length ", nIndividuals)
+      if (length(ploidy) != length(files)) {
+        stop("Length of ploidy (", length(ploidy), ") is not equal to the length of files (", length(files), ").")
       } else {
-        if (!all(unlist(ploidy) %in% c(0, 1, 2))) {
-          nPloidy <- matrix(unlist(ploidy) %in% c(0, 1, 2), ncol = length(files))
-          stop("Ploidy must be 0, 1, or 2. Comparment(s) ", head(which(apply(nPloidy, 2, any))), " contain other characters.")
+        pLength <- unlist(lapply(ploidy, FUN = function(x) length(x) == nIndividuals))
+        if (any(!pLength)) {
+          stop("Ploidy for compartment(s) ", paste(which(!pLength), collapse = ", "), " is not a numeric vector of length ", nIndividuals, " or ploidy = FALSE.")
         } else {
-          res <- TRUE
-        } # Ploidy 0,1,2
-      } # Ploidy in compartments at length of individuals
-    } # Ploidy for all compartments
-  } # Ploidy is a list
+          if (!all(unlist(ploidy) %in% c(0, 1, 2))) {
+            nPloidy <- matrix(unlist(ploidy) %in% c(0, 1, 2), ncol = length(files))
+            stop("Ploidy must be 0, 1, or 2. Comparment(s) ", head(which(apply(nPloidy, 2, any))), " contain other characters.")
+          } else {
+            res <- TRUE
+          } # Ploidy 0,1,2
+        } # Ploidy in compartments at length of individuals
+      } # Ploidy for all compartments
+    } # Ploidy is a list
+  } # ploidy = FALSE
 
   message("Ploidy check passed: ", res)
 
