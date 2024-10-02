@@ -3,12 +3,12 @@
 #' Reads vcf files and writes genotypes of the most frequent alleles based on
 #' chromosome positions to diem format.
 #'
-#' @param SNP character vector with a path to the '.vcf' or '.vcf.gz' file, or an \code{vcfR}
+#' @param SNP A character vector with a path to the '.vcf' or '.vcf.gz' file, or an \code{vcfR}
 #'     object. Diploid data are currently supported.
-#' @param filename character vector with a path where to save the converted genotypes.
-#' @param chunk numeric indicating by how many markers should the result be split into
+#' @param filename A character vector with a path where to save the converted genotypes.
+#' @param chunk Numeric indicating by how many markers should the result be split into
 #'     separate files.
-#' @param requireHomozygous logical whether to require the marker to have at least one
+#' @param requireHomozygous Logical whether to require the marker to have at least one
 #'     homozygous individual for each allele.
 #'
 #' @details Importing vcf files larger than 1GB, and those containing multiallelic
@@ -118,7 +118,8 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
     # file names for loci positions
     lociFiles <- c(
       paste0(filepath, "-omittedSites.txt"),
-      paste0(filepath, "-includedSites.txt")
+      paste0(filepath, "-includedSites.txt"),
+      paste0(filepath, "-sampleNames.txt")
     )
     # estimate chunk size
     if (chunk < 100) {
@@ -250,11 +251,12 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
   origChunk <- outputs[[3]]
   omittedSites <- outputs[[4]][1]
   includedSites <- outputs[[4]][2]
+  sampleNames <- outputs[[4]][3]
 
   # initialize loci placement files
   cat("## Reasons for omitting loci:\n## 1 - Marker has fewer than 2 alleles representing substitutions\n## 2 - Required homozygous individuals for the 2 most frequent alleles are not present\n## 3 - The second most frequent allele is found only in one heterozygous individual\n## 4 - Dataset is invariant for the most frequent allele\n## 5 - Dataset is invariant for the allele listed as the first ALT in the vcf input\nCHROM\tPOS\tQUAL\tREASON\n", file = omittedSites, append = FALSE)
   cat("CHROM\tPOS\tQUAL\tallele0\tallele2\n", file = includedSites, append = FALSE)
-
+  cat("sampleNames\n", file = sampleNames, append = FALSE)
 
 
   ##############################
@@ -313,8 +315,13 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
 
     # skip meta information
     while (substr(Marker, 1, 1) == "#") {
+      previousMarker <- Marker
       Marker <- readLines(infile, n = 1)
     }
+    
+    # write sample names
+    previousMarker <- unlist(strsplit(previousMarker, split = "\t"))
+    cat(previousMarker[10:length(previousMarker)], file = sampleNames, sep = "\n", append = TRUE)
 
 
     # read and resolve genotypes
