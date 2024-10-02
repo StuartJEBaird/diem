@@ -3,10 +3,11 @@
 #' Reads genotypes from a file and changes marker polarity.
 #'
 #' @inheritParams diem
-#' @param changePolarity logical vector with length equal to the number of markers.
-#' @param ... optional numeric vector of `compartmentSizes`.
+#' @param changePolarity A logical vector with length equal to the number of markers.
+#' @param verbose Logical whether to show messages on import progress.
+#' @param ... Optional numeric vector of \code{compartmentSizes}.
 #' @details For details on the input data format, check the \code{file} with
-#'   \code{CheckDiemFormat}.
+#'   \link{CheckDiemFormat}.
 #'
 #'   The `changePolarity` argument influences how each marker is imported. Value
 #'   `FALSE` means that the marker will be imported as it is saved in the `file`. Value
@@ -14,8 +15,8 @@
 #'   encoded in the `file` as `2` will be imported as `0`.
 #' @return Returns a character matrix with rows containing individual genotypes and columns
 #'   containing markers.
-#' @seealso \code{\link{diem}} for determining appropriate marker polarity with
-#'   respect to a barrier to geneflow.
+#' @seealso \link{diem} for determining appropriate marker polarity with
+#'   respect to a barrier to gene flow.
 #' @export
 #' @examples
 #' dat <- importPolarized(
@@ -32,12 +33,13 @@
 #' # 4 "1" "2" "0"
 #' # 5 "2" "2" "1"
 #' # 6 "2" "2" "_"
-importPolarized <- function(files, changePolarity, ChosenInds, ChosenSites, nCores = 1, ...) {
+importPolarized <- function(files, changePolarity, ChosenInds, ChosenSites = "all", nCores = 1, verbose = FALSE, ...) {
   ChosenSites <- resolveCompartments(files = files, toBeCompartmentalized = ChosenSites, ...)
-message("ChosenSites done ", Sys.time())
+  if(verbose) message("ChosenSites for compartments done ", Sys.time())
+
   markerLabels <- which(unlist(ChosenSites))
   changePolarity <- resolveCompartments(files = files, toBeCompartmentalized = changePolarity, ...)
-message("changePolarity done ", Sys.time())
+  if(verbose) message("changePolarity for compartments done ", Sys.time())
 
   allCompartments <- parallel::mclapply(1:length(files), mc.cores = nCores,
     FUN = function(i){
@@ -62,6 +64,7 @@ message("changePolarity done ", Sys.time())
     return(genotypes)
     })
   
+  if(verbose) message("Importing all compartments done ", Sys.time())
 
   allCompartments <- Filter(Negate(anyNA), allCompartments)
   allCompartments <- do.call(cbind, allCompartments)

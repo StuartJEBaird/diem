@@ -1,16 +1,16 @@
 #' Plot Polarized Genotypes
 #'
 #' Plots genotypes that can be optionally polarized.
-#' @param genotypes character matrix comprising of _012 encodings.
-#' @param HI numeric vector of individual hybrid indices with length equal to number
+#' @param genotypes A character matrix comprising of _012 encodings.
+#' @param HI A numeric vector of individual hybrid indices with length equal to number
 #'   of rows in \code{genotypes}.
-#' @param cols vector of four colors, representing missing data, homozygotes for
+#' @param cols A vector of four colors, representing missing data, homozygotes for
 #'    genotype 0, heterozygotes and homozygotes for genotype 2.
-#' @param ... additional selected arguments passed to \link[graphics]{image} and
+#' @param ... Additional selected arguments passed to \link[graphics]{image} and
 #'    \link[graphics]{axis}.
-#' @details To import and polarize genotypes, use the \code{\link{importPolarized}} function.
+#' @details To import and polarize genotypes, use the \link{importPolarized} function.
 #'
-#'   When using \code{\link{diem}}, hybrid indices,
+#'   When using \link{diem}, hybrid indices,
 #'   \code{HI}, can be found in the file 'HIwithOptimalPolarities.txt'. Alternatively,
 #'   calculate \code{HI} from the polarized genotypes as shown in the examples.
 #'
@@ -28,6 +28,7 @@
 #'   represent sides of the barrier to gene flow encoded as `0` and `2`, respectively,
 #'   yellow shows heterozygotes and white represents missing or undetermined genotypes. 
 #'   Individuals are ordered according to the sorted \code{HI}.
+#' @seealso \link{plotMarkerAxis} to add chromosome information to the x axis.
 #' @importFrom graphics image axis
 #' @importFrom grDevices col2rgb
 #' @importFrom utils modifyList
