@@ -1,24 +1,35 @@
-#' Smooths Polarized Genotype States
+#' Smooth Polarized Genotype States
 #'
 #' This function smooths polarized genotype states using a Laplace kernel density estimation.
-#' It calculates a smoothed version of the genotype states over specified windows.
+#' It calculates a smoothed version of the genotype states over specified physical extent
+#' of genomic content around a site. At each
+#' genomic position, the function returns a weighted mode of the genomic state.
+#'
 #'
 #' @inheritParams rank2map
 #' @inheritParams plotPolarized
 #' @param windows A two-column numeric matrix with indices of start and end positions for 
-#'  windows for all markers indicated by \code{ChosenSites}.
-#' @param ... Additional parameters to be passed to \link{rank2map} if \code{windows = NULL}.
-#' @details Ensure that \code{ChosenSites} is the same as was used to import polarized genotypes.
+#'  windows for all markers indicated by \code{ChosenSites}. If \code{windows = NULL}, the function 
+#'  calculates the windows using \link{rank2map}.
+#' @param ... Additional arguments to be passed to \link{rank2map} if \code{windows = NULL}.
+#' @details Ensure that \code{ChosenSites} match those used to import polarized genotypes.
 #'
-#' The function uses a Laplace kernel to weight the genotype states within a window around each marker position,
-#' based on physical positions of the markers. The smoothing process accounts for chromosome-level scales.
+#' The function uses a truncated and scaled Laplace kernel to weight the genotype states 
+#' within a window around each marker position,
+#' based on physical positions of the markers.
 #' 
-#' The Laplace kernel density is calculated as:
-#' \deqn{\frac{1}{2b} \exp\left(\frac{-|x - \mu|}{b}\right)}
-#' where \eqn{x} is the position, \eqn{\mu} is the center of the kernel, and \eqn{b} is the scale parameter.
-#' The scale parameter is \eqn{b = 10^{-4} n}, where \eqn{n} is the position of the last 
-#' marker on the chromosome.
-#' @importFrom stats weighted.mean
+#' The Laplace kernel weights are calculated for physical positions of the sites centered at
+#' the site being smoothed as:
+#' \deqn{\frac{10}{19} \exp\left(\frac{-x}{b}\right),}
+#' when \eqn{x < 0}, and as:
+#' \deqn{\frac{10}{19} \exp\left(\frac{x}{b}\right),}
+#' when \eqn{x \geq 0},
+#' where \eqn{x} is the position, and \eqn{b} is the scale parameter of the Laplace kernel.
+#' The scale parameter is equal to:
+#' \deqn{b = \frac{\text{windowSize}}{2 \ln(20)}.}
+#' 
+#' @importFrom stats aggregate
+#' @seealso \link{rank2map}
 #' @export
 #' @examples
 #'  \dontrun{
@@ -33,9 +44,8 @@
 #'  plotPolarized(gen, h)
 #'  plotPolarized(gen2, h)
 #'  }
-smoothPolarizedGenotypes <- function(genotypes, includedSites, ChosenSites = "all", windows = NULL, windowSize = NULL, ...){
-  # genotypes are numeric
-  genotypes <- suppressWarnings(apply(genotypes, 2, as.numeric))
+smoothPolarizedGenotypes <- function(genotypes, includedSites, ChosenSites = "all", windows = NULL, windowSize = 250000, ...){
+  
   nMarkers <- ncol(genotypes)
   nInds <- nrow(genotypes)
   
@@ -50,14 +60,12 @@ smoothPolarizedGenotypes <- function(genotypes, includedSites, ChosenSites = "al
   bed <- readIncludedSites(includedSites = includedSites, ChosenSites = ChosenSites)
 
   # Laplace kernel
-  laplaceDensity <- function(x, mu, b) {
-    (1 / (2 * b)) * exp(-abs(x - mu) / b)
-  }
+  laplaceScale <- windowSize / (2 * log(20))
+  centeredPositions <- ceiling(-windowSize / 2):floor(windowSize / 2)
+  allLaplaceWeights <- truncatedLaplace(x = centeredPositions,
+  	laplaceScale = laplaceScale)
   
-  # chromosome level scales b
-  # https://www.biorxiv.org/content/10.1101/2024.06.03.597101v1.full
-  b <- 1e-4 * bed$POS[!duplicated(bed$CHROM, fromLast = TRUE)]
-  b <- rep(b, rle(bed$CHROM)$lengths)
+
   
   gen2 <- matrix(NA, ncol = nMarkers, nrow = nInds)
   
@@ -66,13 +74,15 @@ smoothPolarizedGenotypes <- function(genotypes, includedSites, ChosenSites = "al
       whichSites <- windows[j, 1]:windows[j, 2]
       genotypesInWindow <- !is.na(genotypes[i, whichSites])
       if(any(genotypesInWindow)){
-      gen2[i,j] <- weighted.mean(genotypes[i, whichSites], 
-        weights = laplaceDensity(x = bed$POS[whichSites], mu = bed$POS[j], b = b[j]),
-        na.rm = TRUE)
+      	centeredSitePositions <- bed$POS[whichSites] - bed$POS[j]
+      gen2[i, j] <- unbiasedWeightedStateChoice(
+      	genomicStates = genotypes[i, whichSites],
+      	laplaceWeights = allLaplaceWeights[match(centeredSitePositions, centeredPositions)]
+      )
     }
     
     }
   
   }
-  return(round(gen2))
+  return(gen2)
 }

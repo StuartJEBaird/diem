@@ -29,7 +29,9 @@
 #'
 #' Minimum value of \code{windowSize} is equal to 3, but in genomic data evaluations, window
 #' size should be at least two orders of magnitude larger. A good approximation of a
-#' useful minimum window size is $(genome size) / ((number of SNPSs) / 2)$.
+#' useful minimum window size is $(genome size) / ((number of SNPSs) / 2)$. Throughout the 
+#' diemr package, \code{windowSize} refers to the genomic context of the respective SNP
+#' that the user wishes to consider when smoothing over the polarized genomic states.
 #'
 #' @note The unit of parallelization when using \code{nCores > 1} is set per chromosome.
 #' This may differ from the parallelization approach used in \link{diem}, where processing
@@ -41,6 +43,7 @@
 #'   \code{ChosenSites}, indicating start and end indices of adjacent markers that are 
 #'   within an interval of length \code{windowSize} centered on the specific marker.
 #' @export
+#' @seealso \link{smoothPolarizedGenotypes}
 #' @examples
 #'  \dontrun{
 #'  # Run this example in a working directory with write permissions

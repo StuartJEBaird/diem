@@ -2,7 +2,7 @@
 # compartment file
 
 resolveCompartments <- function(files, toBeCompartmentalized, compartmentSizes = NULL) {
-  if(missing(files)) stop("Provide paths to diem input files in the `files` argument.")
+  if (missing(files)) stop("Provide paths to diem input files in the `files` argument.")
   if (is.null(compartmentSizes)) {
     compartmentSizes <- unname(sapply(files, FUN = \(x) length(readLines(x))))
   }
@@ -73,20 +73,20 @@ markerAxis <- function(includedSites, ChosenSites, tickDist) {
 }
 
 
-readIncludedSites <- function(includedSites, ChosenSites = "all"){
+readIncludedSites <- function(includedSites, ChosenSites = "all") {
   bed <- read.table(includedSites, header = TRUE, sep = "\t")
-  if(inherits(ChosenSites, "logical") || inherits(ChosenSites, "numeric")){
+  if (inherits(ChosenSites, "logical") || inherits(ChosenSites, "numeric")) {
     bed <- bed[ChosenSites, ]
   }
   return(bed)
 }
 
 
-# Calculates position of SNPs on a chromosome with respect to the SNP rank in the 
+# Calculates position of SNPs on a chromosome with respect to the SNP rank in the
 # selected markers
 # Original up to the diemr 1.4.1
 #' @aliases rank2map
-#rank2mapChr <- function(x, windowSize = 3) {
+# rank2mapChr <- function(x, windowSize = 3) {
 #  n <- length(x)
 #  if(is.null(windowSize)){
 #    warning("windowSize is NULL. Using windowSize = 1e+07.")
@@ -94,11 +94,11 @@ readIncludedSites <- function(includedSites, ChosenSites = "all"){
 #  }
 #  halfSize <- windowSize / 2
 #  res <- matrix(NA, ncol = 2, nrow = n, dimnames = list(NULL, c("start", "end")))
-#  
+#
 #  for (i in seq_len(n)) {
-#    backwardPos <- i  
-#    forwardPos <- i  
-#        
+#    backwardPos <- i
+#    forwardPos <- i
+#
 #    while (backwardPos > 1 && abs(x[i] - x[backwardPos - 1]) <= halfSize) {
 #      backwardPos <- backwardPos - 1
 #    }
@@ -109,9 +109,9 @@ readIncludedSites <- function(includedSites, ChosenSites = "all"){
 #    }
 #    res[i, 2] <- forwardPos
 #  }
-#  
+#
 #  return(res)
-#}
+# }
 # New from Inchworm by Stuart J.E. Baird
 # From diemr 1.4.2
 rank2mapChr <- function(x, windowSize) {
@@ -122,27 +122,65 @@ rank2mapChr <- function(x, windowSize) {
   right <- 1
   lesseq <- x[1] - 1
   ans <- matrix(0, nrow = lengthX, ncol = 2)
-  
+
   for (xfocus in x) {
     if (lesseq > xfocus) stop("unsorted argument")
-    
+
     while (x[right] < xfocus + reach && right < lengthX) {
       right <- right + 1
     }
-    
+
     if (x[right] > xfocus + reach) {
       right <- right - 1
     }
-    
+
     while (x[left] + reach < xfocus && left < focus) {
       left <- left + 1
     }
-    
+
     ans[focus, ] <- c(left, right)
     lesseq <- xfocus
     focus <- focus + 1
   }
-  
+
   return(ans)
 }
 
+
+
+#' Truncated Laplace distribution to 95% of area under the curve, weights scaled to 10/19
+#'
+#' @param x A vector of integers, representing centered positions of SNPs
+#' @param laplaceScale A numeric giving scale of the Laplace distribution. 
+#' @details x must be within +-laplaceScale * log(20)
+truncatedLaplace <- function(x, laplaceScale) {
+  if (min(x) < -laplaceScale * log(20)) {
+    stop("Minimum value of x for the trunctated Laplace distribution needs to be ", -laplaceScale * log(20))
+  }
+  if (max(x) > laplaceScale * log(20)) {
+    stop("Maximum value of x for the trunctated Laplace distribution needs to be ", laplaceScale * log(20))
+  }
+  laplaceWeights <- ifelse(x >= 0,
+    (10 / 19) * exp(-x / laplaceScale),
+    (10 / 19) * exp(x / laplaceScale)
+  )
+  return(laplaceWeights)
+}
+
+
+#' Selects weighted mode of the genomic state
+#'
+#' @param genomicStates A character vector of genomic states in a given interval
+#' @param laplaceWeights A numeric vector of weights
+unbiasedWeightedStateChoice <- function(genomicStates, laplaceWeights) {
+  stateSummary <- aggregate(laplaceWeights ~ genomicStates,
+    FUN = sum, na.rm = TRUE
+  )
+  stateSummary[, "max"] <- aggregate(laplaceWeights ~ genomicStates,
+    FUN = max, na.rm = TRUE
+  )[, 2]
+  
+  stateSummary <- stateSummary[order(stateSummary[, 2], stateSummary[, 3], stateSummary[, 1], decreasing = TRUE), ]
+  
+  return(stateSummary[1, 1])
+}
