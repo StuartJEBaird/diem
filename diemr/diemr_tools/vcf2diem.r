@@ -8,8 +8,10 @@
 #' @param filename A character vector with a path where to save the converted genotypes.
 #' @param chunk Numeric indicating by how many markers should the result be split into
 #'     separate files.
-#' @param requireHomozygous Logical whether to require the marker to have at least one
-#'     homozygous individual for each allele.
+#' @param requireHomozygous A logical or numeric vector indicating whether to require the marker
+#' to have at least one or more
+#'     homozygous individual(s) for each allele.
+#' @inheritParams diem
 #'
 #' @details Importing vcf files larger than 1GB, and those containing multiallelic
 #'    genotypes is not recommended. Instead, use the path to the
@@ -27,30 +29,30 @@
 #'    from a model with a message. If this number of markers per file is inappropriate
 #'    for the expected
 #'    output, provide the intended number of markers per file in \code{chunk} greater
-#'    than 100 (values greater than 10000 are recommended for genomic data). 
+#'    than 100 (values greater than 10000 are recommended for genomic data).
 #'    \code{vcf2diem} will scan the whole input specified in the \code{SNP} file, creating
 #'    additional output files until the last line in \code{SNP} is reached.
 #'    * Values of \code{chunk >= 100} mean that each output file
 #'    in diem format will contain \code{chunk} number of lines with the data in \code{SNP}.
 #'
-#'    When the vcf file contains markers not informative for genome polarisation, 
-#'    those are removed and listed in a file ending with *omittedSites.txt* in the  
+#'    When the vcf file contains markers not informative for genome polarisation,
+#'    those are removed and listed in a file ending with *omittedSites.txt* in the
 #'    directory specified in the \code{SNP} argument or in the working directory.
-#'    The omitted loci are identified by their information in the CHROM and POS columns, 
+#'    The omitted loci are identified by their information in the CHROM and POS columns,
 #'    and include the QUAL column data. The last column is an integer specifying
 #'    the reason why the respective marker was omitted. The reasons why markers are
 #'    not informative for genome polarisation using \code{diem} are:
 #'    1. Marker has fewer than 2 alleles representing substitutions.
-#'    2. Required homozygous individuals for the 2 most frequent alleles are not present 
+#'    2. Required homozygous individuals for the 2 most frequent alleles are not present
 #'    (optional, controlled
 #'    by the \code{requireHomozygous} argument).
 #'    3. The second most frequent allele is found only in one heterozygous individual.
 #'    4. Dataset is invariant for the most frequent allele.
 #'    5. Dataset is invariant for the allele listed as the first ALT in the vcf input.
 #'
-#'    The CHROM, POS, and QUAL information for loci included in the converted files are 
-#'    listed in the file ending with *includedSites.txt*. Additional columns show which 
-#'    allele is 
+#'    The CHROM, POS, and QUAL information for loci included in the converted files are
+#'    listed in the file ending with *includedSites.txt*. Additional columns show which
+#'    allele is
 #'    encoded as 0 in its homozygous state and which is encoded as 2.
 #' @return No value returned, called for side effects.
 #' @importFrom vcfR getFIX extract.gt
@@ -68,7 +70,7 @@
 #' vcf2diem(SNP = myofile, filename = "test1")
 #' vcf2diem(SNP = myofile, filename = "test2", chunk = 3)
 #' }
-vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
+vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE, ChosenInds = "all") {
   if (!inherits(SNP, c("character", "vcfR"), which = FALSE)) {
     stop("'SNP' must be either a 'vcfR' object or a 'character' string with path to a vcf file.")
   }
@@ -91,6 +93,8 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
     chunk <- chunk[1]
     warning("Different chunk sizes are not permitted. Using chunk size of ", chunk, " for all files.")
   }
+  minHomozygous <- as.integer(requireHomozygous)
+  requireHomozygous <- requireHomozygous > 0
 
 
 
@@ -197,16 +201,16 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
     # identify non-informative markers
     I4 <- t(apply(SNP, MARGIN = 1, FUN = sStateCount))
     nonInformative <- FALSE
-    if (requireHomozygous && (I4[, 2] == 0 || I4[, 4] == 0)) { # homozygous individuals missing
+    if (requireHomozygous && (I4[, 2] < minHomozygous || I4[, 4] < minHomozygous)) { # homozygous individuals missing
       nonInformative <- TRUE
       reason <- 2
     } else if ((I4[, 3] == 1 && (I4[, 2] == 0 || I4[, 4] == 0))) { # only one heterozygous individual
       nonInformative <- TRUE
       reason <- 3
-    } else if (I4[, 4] == 0 && I4[, 3] == 0) { # invariant for the most frequent allele
+    } else if (I4[, 2] == 0 && I4[, 3] == 0) { # invariant for the most frequent allele
       nonInformative <- TRUE
       reason <- 4
-    } else if (I4[, 2] == 0 && I4[, 3] == 0) { # invariant for the second most frequent allele
+    } else if (I4[, 4] == 0 && I4[, 3] == 0) { # invariant for the second most frequent allele
       nonInformative <- TRUE
       reason <- 5
     }
@@ -318,10 +322,25 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
       previousMarker <- Marker
       Marker <- readLines(infile, n = 1)
     }
-    
+
     # write sample names
     previousMarker <- unlist(strsplit(previousMarker, split = "\t"))
     cat(previousMarker[10:length(previousMarker)], file = sampleNames, sep = "\n", append = TRUE)
+
+    # check ChosenInds
+    nInds <- length(previousMarker) - 9
+    if (ChosenInds[1] == "all") {
+      ChosenInds <- rep(TRUE, nInds)
+    }
+
+
+
+    if (!(inherits(ChosenInds, "logical") || inherits(ChosenInds, "numeric") || inherits(ChosenInds, "integer")) ||
+      any(ChosenInds > nInds) ||
+      (inherits(ChosenInds, "logical") && length(ChosenInds) != nInds)) {
+      warning("There are ", nInds, " individuals in the vcf file. Converting to diem for all.")
+      ChosenInds <- rep(TRUE, nInds)
+    }
 
 
     # read and resolve genotypes
@@ -329,7 +348,9 @@ vcf2diem <- function(SNP, filename, chunk = 1L, requireHomozygous = TRUE) {
       Marker <- matrix(unlist(strsplit(Marker, split = "\t")), nrow = 1)
       INFO <- Marker[, 1:7, drop = FALSE]
       SNP <- Marker[, 10:ncol(Marker), drop = FALSE]
+      SNP <- SNP[, ChosenInds, drop = FALSE]
       SNP <- sub(":.+", "", SNP, perl = TRUE)
+
 
       SNP <- ResolveGenotypes()
 
