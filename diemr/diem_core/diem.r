@@ -7,21 +7,24 @@
 #' for all markers, and hybrid indices for all individuals.
 #'
 #'
-#' @param files character vector with paths to files with genotypes.
-#' @param ploidy logical or list of length equal to length of \code{files}. Each element of the list
-#'    contains a numeric vector with ploidy numbers for all individuals specified in
-#'    the \code{files}.
-#' @param markerPolarity \code{FALSE} or list of logical vectors.
-#' @param ChosenInds numeric vector of indices of individuals to be included in the analysis.
-#' @param epsilon numeric, specifying how much the hypothetical diagnostic markers should
+#' @param files A character vector with paths to files with genotypes.
+#' @param ploidy A logical or a list of length equal to length of \code{files}. Each 
+#'   element of the list
+#'   contains a numeric vector with ploidy numbers for all individuals specified in
+#'   the \code{files}.
+#' @param markerPolarity \code{FALSE} or a list of logical vectors.
+#' @param ChosenInds A numeric or logical vector of indices of individuals to be included 
+#'   in the analysis.
+#' @param ChosenSites A logical vector indicating which sites are to be included in the
+#'    analysis.
+#' @param epsilon A numeric, specifying how much the hypothetical diagnostic markers should
 #' 			contribute to the likelihood calculations. Must be in \code{[0,1)}, keeping
 #'  		tolerance setting of the \code{R} session in mind.
-#' @param verbose logical or character with path to directory where run diagnostics will
+#' @param verbose Logical or character with path to directory where run diagnostics will
 #'    be saved.
-#' @param nCores numeric. Number of cores to be used for parallelisation. Must be
-#'     at most equal to the number of files in the \code{files} argument, and
+#' @param nCores A numeric number of cores to be used for parallelisation. Must be
 #'     \code{nCores = 1} on Windows.
-#' @param maxIterations numeric.
+#' @param maxIterations A numeric.
 #' @param ... additional arguments.
 #' @export
 #' @details  Given two alleles of a marker, one allele can belong to one side of a barrier
@@ -50,18 +53,28 @@
 #'   chromosomes, but males only one, and females have no Y chromosomes:
 #'   \code{ploidy = list(rep(2, 3), c(1, 2, 2), c(1, 0, 0))}.
 #'
+#'   When a subset of individuals is used to inform the genome polarisation in the 
+#'   \code{ChosenInds} argument, \code{ploidy} must still be provided for all individuals 
+#'   included in the \code{files}. 
+#'
+#'   \code{ChosenInds} should preferably be numeric values within the range from 1 to the 
+#'   number of individuals in the \code{files}. Logical vectors must have a length equal  
+#'   to the number of individuals in the \code{files}.
+#'
 #'   When \code{verbose = TRUE}, \code{diem} will output multiple files with information
 #'   on the iterations of the EM algorithm, including tracking marker polarities and the
-#'   respective likelihood-based diagnostics. See vignette \code{vignette("diem_output",
+#'   respective likelihood-based diagnostics. See vignette \code{vignette("Understanding-genome-polarisation-output-files",
 #'   package = "diemr")} for a detailed explanation of the individual output files.
 #' @note To ensure that the data input format of the genotype files, ploidies and individual
-#'   selection are readable for \code{diem}, first use \code{\link{CheckDiemFormat}}.
+#'   selection are readable for \code{diem}, first use \link{CheckDiemFormat}.
 #'   Fix all errors, and run \code{diem} only once the checks all passed.
 #'
 #'   The working directory or a folder optionally specified in the \code{verbose}
 #'   argument must have write permissions. \code{diem} will store temporary files in the
 #'   location and output results files.
-#' @seealso \code{\link{CheckDiemFormat}}
+#'
+#'   The grain for parallelisation is the compartment \code{files}.
+#' @seealso \link{CheckDiemFormat}
 #' @return A list including suggested marker polarities, diagnostic indices and support for all
 #' 		markers, four genomic state counts matrix for all individuals, and polarity changes
 #'      for the EM iterations.
@@ -94,11 +107,14 @@
 
 
 diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
+                 ChosenSites = "all",
                  epsilon = 0.99999, verbose = FALSE, nCores = parallel::detectCores() - 1,
                  maxIterations = 50, ...) {
   if (is.na(nCores)) nCores <- 1
   if (nCores > parallel::detectCores()) nCores <- parallel::detectCores()
-
+  if(inherits(ChosenInds, "logical")){
+    ChosenInds <- which(ChosenInds)
+  }
 
   ###################################
   # prepare diagnostics folder
@@ -164,7 +180,7 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
   #  Calculates I4, individual state counts
   #############################################
 
-  GetI4ofOneCompartment <- function(file, changePolarity = FALSE, ...) {
+  GetI4ofOneCompartment <- function(file, changePolarity = FALSE, ChosenSites, ...) {
     # read file with genotypes, individuals are in rows, markers in columns
     if (!Finalising) {
       genotypes <- sImport(file = file)
@@ -178,6 +194,11 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       changePolarity <- sample(c(rep(TRUE, n2), rep(FALSE, n - n2)),
         size = n
       )
+    }
+
+    # keep only ChosenSites
+    if (any(!ChosenSites)) {
+      genotypes[, !ChosenSites] <- OmittedMarker
     }
 
     # polarise markers
@@ -251,7 +272,7 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
   #   Update all marker polarities
   #####################################
 
-  RelabelCompartment <- function(file, changePolarity = TRUE, compartment, ...) {
+  RelabelCompartment <- function(file, changePolarity = TRUE, compartment, ChosenSites, ...) {
     # read file with genotypes
     genotypes <- sImport(file)
 
@@ -278,10 +299,15 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       changedMarkers <- data.frame(changedMarkers = NA, time = Sys.time(), iteration = IterationCount)
     }
     if (sum(newPolarity) > 0) {
-      changedSC <- lapply(Polarity[newPolarity], function(x) x[[4]])
-      changedSC <- matrix(unlist(changedSC), nrow = sum(newPolarity), byrow = TRUE)
+      ChosenSitesPolarity <- Polarity[ChosenSites]
+      ChosenSitesNewPolarity <- newPolarity[ChosenSites]
 
-      deltaI4 <- t(apply(changedSC, MARGIN = 2, sStateCount))
+      if (sum(ChosenSitesNewPolarity) > 0) {
+        changedSC <- lapply(ChosenSitesPolarity[ChosenSitesNewPolarity], function(x) x[[4]])
+        changedSC <- matrix(unlist(changedSC), nrow = sum(ChosenSitesNewPolarity), byrow = TRUE)
+
+        deltaI4 <- t(apply(changedSC, MARGIN = 2, sStateCount))
+      }
       changedMarkers <- data.frame(
         changedMarkers = which(newPolarity),
         time = Sys.time(),
@@ -303,10 +329,9 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       file = paste0(lfolder, "/MarkerDiagnostics", IterationCount, "-", compartment, ".txt"), row.names = FALSE, sep = "\t"
     )
 
-
     return(list(
-      newPolarity = newPolarity,
-      deltaI4 = deltaI4
+      newPolarity = newPolarity, # for all sites
+      deltaI4 = deltaI4 # only for ChosenSites
     ))
   }
 
@@ -453,6 +478,18 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
     ChosenInds <- 1:(nchar(readLines(files[1])[1]) - 1)
   }
 
+
+  # Check ChosenSites
+  OmittedMarker <- rep("_", length(ChosenInds))
+  ChosenSites <- resolveCompartments(
+    files = files,
+    toBeCompartmentalized = ChosenSites
+  )
+
+  nOmittedSitesPerCompartment <- lapply(ChosenSites, FUN = \(x) c(sum(!x), 0, 0, 0))
+
+
+
   # Check markerPolarity
   if (!inherits(markerPolarity, "list")) {
     markerPolarity <- list(FALSE)[rep(1, length(files))]
@@ -464,6 +501,7 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
     message("ploidy is missing, assuming all compartments to be diploid for all individuals")
   }
 
+
   # I4compartments is a list
   I4compartments <- parallel::mclapply(
     X = as.character(1:length(files)), mc.cores = nCores,
@@ -471,20 +509,26 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       GetI4ofOneCompartment(
         file = files[as.numeric(x)],
         changePolarity = markerPolarity[[as.numeric(x)]],
-        ChosenInds = ChosenInds, ...
+        ChosenInds = ChosenInds,
+        ChosenSites = ChosenSites[[as.numeric(x)]]
       )
     }
   )
   markerPolarity <- lapply(I4compartments, FUN = function(x) x[[2]])
   changePolarity <- markerPolarity
   compartmentSizes <- unlist(lapply(I4compartments, FUN = function(x) x[[3]]))
+  I4compartments <- lapply(I4compartments, FUN = function(x) x[[1]])
+
+  # remove influence of omitted sites
+  I4compartments <- lapply(1:length(ChosenSites), FUN = function(x) {
+    I4compartments[[x]] - matrix(rep(nOmittedSitesPerCompartment[[x]], length(ChosenInds)), ncol = 4, byrow = TRUE)
+  })
   # I4 is a matrix
-  I4 <- Reduce("+", lapply(I4compartments, FUN = function(x) x[[1]]))
+  I4 <- Reduce("+", I4compartments)
   nMarkers <- sum(I4[1, ])
 
 
   # allele counts accross compartments
-  I4compartments <- lapply(I4compartments, FUN = function(x) x[[1]])
   A4compartments <- Map("*", I4compartments, lapply(ploidy, "[", ChosenInds))
 
 
@@ -568,7 +612,7 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
   #########################
 
   while (!ActualLimitCycle & (IterationCount <= maxIterations)) {
-    message("diem iteration: ", IterationCount)
+    message("diem iteration: ", IterationCount, " started at ", Sys.time())
 
 
     ###################################
@@ -588,7 +632,9 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       FUN = function(x) {
         RelabelCompartment(
           file = files[as.numeric(x)],
-          changePolarity = changePolarity[[as.numeric(x)]], compartment = as.numeric(x), ...
+          changePolarity = changePolarity[[as.numeric(x)]],
+          compartment = as.numeric(x),
+          ChosenSites = ChosenSites[[as.numeric(x)]], ...
         )
       }
     )
@@ -696,7 +742,10 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
       capture.output(round(FlatLogI4[1:min(28, length(FlatLogI4))], 2), file = logfile, append = TRUE)
     }
 
-
+    
+    # memory management
+    invisible(capture.output(gc()))
+    
     # end one iteration
     IterationCount <- IterationCount + 1
   } # end while for cycle limit
@@ -705,7 +754,11 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
   Finalising <- TRUE
   message("Finalising diem output ", Sys.time())
 
-  DI <- summariseDIacrossCompartments(iteration = ExistingLCcandidate[[2]][1] + 1)
+  if(IterationCount > maxIterations){
+    DI <- summariseDIacrossCompartments(iteration = maxIterations)
+  } else {
+    DI <- summariseDIacrossCompartments(iteration = ExistingLCcandidate[[2]][1] + 1)
+  }
   #  I4 <- I4changes[[ExistingLCcandidate[[2]][1] + 1]] - SmallDataI4errorTermChanges[[ExistingLCcandidate[[2]][1] + 1]]
   #  rownames(I4) <- ChosenInds
   #  HI <- HIchanges[[ExistingLCcandidate[[2]][1] + 1]]
@@ -719,13 +772,14 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
     I4compartments[[i]] <-
       GetI4ofOneCompartment(
         file = files[i],
-        changePolarity = DI$newPolarity[sum(c(1, compartmentSizes)[1:i]):sum(compartmentSizes[1:i])]
+        changePolarity = DI$newPolarity[sum(c(1, compartmentSizes)[1:i]):sum(compartmentSizes[1:i])],
+        ChosenSites = rep(TRUE, length(ChosenSites[[i]]))
       )
   }
   I4compartments <- lapply(I4compartments, FUN = function(x) x[[1]])
   I4 <- Reduce("+", I4compartments)
 
-  A4compartments <- Map("*", I4compartments, ploidy)
+  A4compartments <- Map("*", I4compartments, lapply(ploidy, "[", ChosenInds))
   A4 <- Reduce("+", A4compartments)
 
 
@@ -756,7 +810,7 @@ diem <- function(files, ploidy = FALSE, markerPolarity = FALSE, ChosenInds,
     epsilon = epsilon,
     DI = DI,
     I4 = I4,
-    MarkersWithChangedPolarity = MarkersWithChangedPolarity,
-    PolarityChanges = PolarityChanges
+    MarkersWithChangedPolarity = MarkersWithChangedPolarity
+    #    PolarityChanges = PolarityChanges
   ))
 }
