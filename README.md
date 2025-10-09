@@ -10,7 +10,7 @@
 
 The *diem* algorithm has been implemented in several programming languages, with core functions and accompanying tools stored in this repository. 
 
-1. **diemr** - `R` implementation. The package is available through https://CRAN.R-project.org/package=diemr. ![](https://cranlogs.r-pkg.org/badges/diemr)
+1. **diemr** - `R` implementation. The package developer version is available through https://github.com/nmartinkova/diemr and the stable release through https://CRAN.R-project.org/package=diemr. ![](https://cranlogs.r-pkg.org/badges/diemr)
 2. **diempy** - `Python` implementation.
 3. **diemmca** - `Mathematica` implementation. Soon also to be available at https://www.notebookarchive.org
 
